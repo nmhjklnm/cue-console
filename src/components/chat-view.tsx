@@ -38,7 +38,7 @@ import {
   type CueResponse,
   type AgentTimelineItem,
 } from "@/lib/actions";
-import { ChevronLeft, MoreHorizontal } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { PayloadCard } from "@/components/payload-card";
 import { ChatComposer } from "@/components/chat-composer";
@@ -990,7 +990,7 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
         </div>
       )}
       {/* Header */}
-      <div className="flex items-center gap-3 border-b px-4 py-3 glass-surface-soft glass-noise">
+      <div className="flex items-center gap-3 border-b border-border/60 px-4 py-3 glass-surface-soft glass-noise">
         {onBack && (
           <Button variant="ghost" size="icon" onClick={onBack}>
             <ChevronLeft className="h-5 w-5" />
@@ -1018,7 +1018,7 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
               onBlur={() => {
                 void commitEditTitle();
               }}
-              className="w-60 max-w-full rounded-md border bg-background px-2 py-1 text-sm font-semibold outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+              className="w-60 max-w-full rounded-xl border border-white/45 bg-white/55 px-2.5 py-1.5 text-sm font-semibold outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]"
             />
           ) : (
             <h2
@@ -1040,16 +1040,13 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
             @ 提及
           </span>
         )}
-        <Button variant="ghost" size="icon">
-          <MoreHorizontal className="h-5 w-5" />
-        </Button>
       </div>
 
       {/* Messages */}
       <ScrollArea
         className={cn(
           "flex-1 min-h-0 p-2 sm:p-4",
-          "bg-background"
+          "bg-transparent"
         )}
         ref={scrollRef}
       >
@@ -1297,12 +1294,13 @@ function MessageBubble({
         )}
         <div
           className={cn(
-            "rounded-2xl p-3 sm:p-4 max-w-full flex-1 basis-0 min-w-0 border bg-card shadow-none sm:shadow-sm overflow-hidden",
-            isPending ? "border-primary/15" : "border-border"
+            "rounded-3xl p-3 sm:p-4 max-w-full flex-1 basis-0 min-w-0 overflow-hidden",
+            "glass-surface-soft glass-noise",
+            isPending ? "ring-1 ring-ring/25" : "ring-1 ring-white/25"
           )}
           style={{ clipPath: "inset(0 round 1rem)", maxWidth: cardMaxWidth }}
         >
-          <div className="text-sm wrap-break-word overflow-hidden min-w-0">
+          <div className="text-sm wrap-anywhere overflow-hidden min-w-0">
             <MarkdownRenderer>{request.prompt || ""}</MarkdownRenderer>
           </div>
           <PayloadCard
@@ -1411,7 +1409,7 @@ function UserResponseBubble({
     return (
       <div className="flex justify-end gap-3 max-w-full min-w-0">
         <div
-          className="rounded-2xl border bg-card p-3 sm:p-4 shadow-none sm:shadow-sm max-w-full flex-1 basis-0 min-w-0 sm:max-w-215 sm:flex-none sm:w-fit overflow-hidden"
+          className="rounded-3xl p-3 sm:p-4 max-w-full flex-1 basis-0 min-w-0 sm:max-w-215 sm:flex-none sm:w-fit overflow-hidden glass-surface-soft glass-noise ring-1 ring-white/25"
           style={{
             clipPath: "inset(0 round 1rem)",
             maxWidth: showAvatar ? "calc(100% - 3rem)" : "100%",
@@ -1427,14 +1425,14 @@ function UserResponseBubble({
   return (
     <div className={cn("flex justify-end gap-3 max-w-full min-w-0", compact && "gap-2")}>
       <div
-        className="rounded-2xl border bg-card p-3 sm:p-4 shadow-none sm:shadow-sm max-w-full flex-1 basis-0 min-w-0 sm:max-w-215 sm:flex-none sm:w-fit overflow-hidden"
+        className="rounded-3xl p-3 sm:p-4 max-w-full flex-1 basis-0 min-w-0 sm:max-w-215 sm:flex-none sm:w-fit overflow-hidden glass-surface-soft glass-noise ring-1 ring-white/25"
         style={{
           clipPath: "inset(0 round 1rem)",
           maxWidth: showAvatar ? "calc(100% - 3rem)" : "100%",
         }}
       >
         {parsed.text && (
-          <p className="whitespace-pre-wrap text-sm wrap-break-word">
+          <p className="whitespace-pre-wrap text-sm wrap-anywhere">
             {renderTextWithMentions(parsed.text, parsed.mentions)}
           </p>
         )}

@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Recursive, Source_Sans_3 } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
+const geistSans = Source_Sans_3({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
-const geistMono = Geist_Mono({
+const geistMono = Recursive({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });

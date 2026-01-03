@@ -49,7 +49,7 @@ export default function Home() {
   };
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex h-screen bg-transparent overflow-hidden">
       {/* Desktop: Side by side */}
       <div
         className="hidden md:flex md:h-full md:w-full"

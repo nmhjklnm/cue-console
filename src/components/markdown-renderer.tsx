@@ -20,7 +20,7 @@ export function MarkdownRenderer({ children }: { children: string }) {
         </a>
       ),
       code: ({ children }: { children?: ReactNode }) => (
-        <code className="rounded bg-muted/40 px-1 py-0.5 text-[0.9em] wrap-break-word">
+        <code className="rounded bg-muted/40 px-1 py-0.5 text-[0.9em] wrap-anywhere">
           {children}
         </code>
       ),
