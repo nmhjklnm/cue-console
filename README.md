@@ -1,6 +1,8 @@
 # cue-console
 
-Cue Hub console (Next.js UI).
+| Mobile | Desktop |
+| --- | --- |
+| ![Mobile screenshot](../iphone.png) | ![Desktop screenshot](../desktop.png) |
 
 ---
 
@@ -20,9 +22,11 @@ Think of it as an “all-in-one” collaboration console for your agents and CLI
 
 Run the console and pair it with `cuemcp`.
 
-### Step 1: Start `cuemcp`
+### Step 1: Install `cue-console`
 
-Add and run the MCP server in your agent/runtime (see [`cue-mcp`](https://github.com/nmhjklnm/cue-mcp) for client-specific MCP configuration).
+```bash
+npm install -g cue-console
+```
 
 ### Step 2: Start `cue-console`
 
@@ -30,7 +34,21 @@ Add and run the MCP server in your agent/runtime (see [`cue-mcp`](https://github
 cue-console dev --port 3000
 ```
 
+Alternatively, you can run it without installing globally:
+
+```bash
+npx cue-console dev --port 3000
+```
+
 Open `http://localhost:3000`.
+
+### Step 3: Start `cuemcp`
+
+Add and run the MCP server in your agent/runtime (see [`cue-mcp`](https://github.com/nmhjklnm/cue-mcp) for client-specific MCP configuration).
+
+### Step 4: Connect your runtime
+
+In the agent/runtime you want to use, type `cue` to trigger connect (or reconnect) and route the collaboration flow to `cue-console`.
 
 ---
 
@@ -78,6 +96,13 @@ Not calling cue() means the user cannot continue the interaction.
 </details>
 
 ---
+
+## Design notes
+
+- **Group chat UX**: collaboration requests and responses are organized like a chat, so you can scan context quickly.
+- **Mentions (`@...`)**: lightweight addressing to route a response or bring a specific agent/human into the thread.
+- **Option cards**: responses can be captured as tappable cards with a responsive layout that works on both mobile and desktop.
+- **Keyboard-first + mobile-friendly**: input affordances aim to work well with both quick desktop workflows and on-the-go usage.
 
 ## Pairing with cuemcp
 
