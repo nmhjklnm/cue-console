@@ -241,7 +241,15 @@ export function ConversationList({
           </div>
         ) : (
           <div className="flex w-full items-center justify-between gap-2">
-            <h1 className="text-lg font-semibold">Cue Hub</h1>
+            <a
+              href="https://github.com/nmhjklnm/cue-console"
+              target="_blank"
+              rel="noreferrer"
+              className="text-lg font-semibold hover:underline underline-offset-4"
+              title="Open cue-console repository"
+            >
+              cue-console
+            </a>
             <div className="flex items-center gap-1">
               <Button
                 variant="ghost"

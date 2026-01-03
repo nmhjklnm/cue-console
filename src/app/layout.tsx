@@ -14,7 +14,7 @@ const geistMono = Recursive({
 });
 
 export const metadata: Metadata = {
-  title: "Cue Hub",
+  title: "cue-console",
   description: "AI agent group chat console",
 };
 

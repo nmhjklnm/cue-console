@@ -38,7 +38,7 @@ import {
   type CueResponse,
   type AgentTimelineItem,
 } from "@/lib/actions";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Github } from "lucide-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { PayloadCard } from "@/components/payload-card";
 import { ChatComposer } from "@/components/chat-composer";
@@ -423,11 +423,51 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
     closeMention();
   };
 
-  const pasteToInput = (text: string, mode: "replace" | "append" = "replace") => {
+  const pasteToInput = (
+    text: string,
+    mode: "replace" | "append" | "upsert" = "replace"
+  ) => {
     const cleaned = (text || "").trim();
     if (!cleaned) return;
 
     const next = (() => {
+      if (mode === "replace") return cleaned;
+
+      if (mode === "upsert") {
+        // Upsert by "<field>:" prefix (first colon defines the key)
+        const colon = cleaned.indexOf(":");
+        if (colon <= 0) {
+          // No clear field key; fall back to append behavior
+          mode = "append";
+        } else {
+          const key = cleaned.slice(0, colon).trim();
+          if (!key) {
+            mode = "append";
+          } else {
+            const rawLines = input.split(/\r?\n/);
+            const lines = rawLines.map((s) => s.replace(/\s+$/, ""));
+            const needle = key + ":";
+
+            let replaced = false;
+            const out = lines.map((line) => {
+              const t = line.trimStart();
+              if (!replaced && t.startsWith(needle)) {
+                replaced = true;
+                return cleaned;
+              }
+              return line;
+            });
+
+            if (!replaced) {
+              const base = out.join("\n").trim() ? out.join("\n").replace(/\s+$/, "") : "";
+              return base ? base + "\n" + cleaned : cleaned;
+            }
+
+            return out.join("\n");
+          }
+        }
+      }
+
       if (mode !== "append") return cleaned;
 
       const lines = input
@@ -811,10 +851,19 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
     const isPending = (r: CueRequest) => r.status === "PENDING";
     
     if (type === "agent") {
-      // Direct chat: respond to all pending requests for this agent
-      const pendingIds = pendingRequests.filter(isPending).map((r) => r.request_id);
-      if (pendingIds.length > 0) {
-        const result = await batchRespond(pendingIds, input, currentImages, draftMentions);
+      // Direct chat: reply only to the latest pending request for this agent
+      const latestPending = pendingRequests
+        .filter(isPending)
+        .slice()
+        .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))[0];
+
+      if (latestPending) {
+        const result = await submitResponse(
+          latestPending.request_id,
+          input,
+          currentImages,
+          draftMentions
+        );
         if (!result.success) {
           setError(result.error || "Send failed");
           setBusy(false);
@@ -1035,6 +1084,16 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
             </p>
           )}
         </div>
+        <Button variant="ghost" size="icon" asChild>
+          <a
+            href="https://github.com/nmhjklnm/cue-console"
+            target="_blank"
+            rel="noreferrer"
+            title="https://github.com/nmhjklnm/cue-console"
+          >
+            <Github className="h-5 w-5" />
+          </a>
+        </Button>
         {type === "group" && (
           <span className="hidden sm:inline text-[11px] text-muted-foreground select-none mr-1" title="Type @ to mention members">
             @ mention
@@ -1235,7 +1294,7 @@ function MessageBubble({
   disabled?: boolean;
   currentInput?: string;
   isGroup?: boolean;
-  onPasteChoice?: (text: string, mode?: "replace" | "append") => void;
+  onPasteChoice?: (text: string, mode?: "replace" | "append" | "upsert") => void;
   onMentionAgent?: (agentId: string) => void;
   onReply?: () => void;
   onCancel?: () => void;
