@@ -5,12 +5,12 @@
 */
 
 /**
- * 请求状态（SQLModel 存储枚举名称为大写）
+ * Request status (SQLModel stores enum names in uppercase)
  */
 export type RequestStatus = "PENDING" | "COMPLETED" | "CANCELLED";
 
 /**
- * MCP → 客户端（cue-hub / 模拟器）的请求
+ * Request from MCP -> client (cue-hub / simulator)
  */
 export interface CueRequest {
   id?: number | null;
@@ -23,7 +23,7 @@ export interface CueRequest {
   updated_at?: string;
 }
 /**
- * 客户端（cue-hub / 模拟器）→ MCP 的响应
+ * Response from client (cue-hub / simulator) -> MCP
  */
 export interface CueResponse {
   id?: number | null;
@@ -33,7 +33,7 @@ export interface CueResponse {
   created_at?: string;
 }
 /**
- * 图片内容
+ * Image content
  */
 export interface ImageContent {
   mime_type: string;
@@ -47,7 +47,7 @@ export interface Mention {
   display: string;
 }
 /**
- * 用户响应内容
+ * User response
  */
 export interface UserResponse {
   text?: string;
@@ -55,10 +55,10 @@ export interface UserResponse {
   mentions?: Mention[];
 }
 
-// ============ 以下为前端扩展类型 ============
+// ============ Frontend extension types ============
 
 /**
- * 群组
+ * Group
  */
 export interface Group {
   id: string;
@@ -67,7 +67,7 @@ export interface Group {
 }
 
 /**
- * 群组成员
+ * Group member
  */
 export interface GroupMember {
   group_id: string;
@@ -76,7 +76,7 @@ export interface GroupMember {
 }
 
 /**
- * 对话列表项
+ * Conversation list item
  */
 export interface ConversationItem {
   id: string;

@@ -231,7 +231,7 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
           : Array.from(cd.files || []).filter((f) => (f?.type || "").startsWith("image/"));
 
       if (imageFiles.length === 0) {
-        setNotice("未检测到可粘贴的图片（请确认剪贴板里是图片）");
+        setNotice("No pasteable images detected (make sure your clipboard contains an image)");
         return;
       }
 
@@ -266,17 +266,17 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
           setImages((prev) => [...prev, ...nextImages]);
           if (failures.length > 0) {
             setNotice(
-              `已添加 ${nextImages.length} 张图片（来自粘贴），失败 ${failures.length} 张：${failures[0]}`
+              `Added ${nextImages.length} image(s) from paste; failed ${failures.length}: ${failures[0]}`
             );
           } else {
-            setNotice(`已添加 ${nextImages.length} 张图片（来自粘贴）`);
+            setNotice(`Added ${nextImages.length} image(s) from paste`);
           }
         } else {
-          setNotice(`检测到图片但解析失败：${failures[0] || "unknown error"}`);
+          setNotice(`Detected images but failed to parse: ${failures[0] || "unknown error"}`);
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        setNotice(`读取剪贴板图片失败：${msg || "unknown error"}`);
+        setNotice(`Failed to read clipboard image: ${msg || "unknown error"}`);
       }
     },
     [fileToInlineImage]
@@ -390,7 +390,7 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
     const cursorStart = el.selectionStart ?? text.length;
     const cursorEnd = el.selectionEnd ?? cursorStart;
 
-    const display = name === "all" ? "@所有人" : `@${name}`;
+    const display = name === "all" ? "@all" : `@${name}`;
     const insertion = `${display} `;
 
     const before = text.slice(0, cursorStart);
@@ -644,7 +644,7 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
     const at = mentionAtIndex;
     if (at === null) return;
 
-    const display = name === "all" ? "@所有人" : `@${name}`;
+    const display = name === "all" ? "@all" : `@${name}`;
     const insertion = `${display} `;
     const before = text.slice(0, at);
     const after = text.slice(cursor);
@@ -744,7 +744,7 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
       const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - threshold;
       setIsAtBottom(atBottom);
 
-      // 懒加载：接近顶部时自动加载更多
+      // Lazy load: auto-load more when near the top
       if (
         el.scrollTop <= threshold &&
         nextCursorRef.current &&
@@ -811,29 +811,29 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
     const isPending = (r: CueRequest) => r.status === "PENDING";
     
     if (type === "agent") {
-      // 单聊模式：回复该 agent 所有待处理请求
+      // Direct chat: respond to all pending requests for this agent
       const pendingIds = pendingRequests.filter(isPending).map((r) => r.request_id);
       if (pendingIds.length > 0) {
         const result = await batchRespond(pendingIds, input, currentImages, draftMentions);
         if (!result.success) {
-          setError(result.error || "发送失败");
+          setError(result.error || "Send failed");
           setBusy(false);
           return;
         }
         sent = true;
       }
     } else {
-      // 群聊模式
+      // Group chat
       const mentionTargets = new Set(
         draftMentions
           .map((m) => m.userId)
-          .filter((u) => u && u !== "all")
+          .filter((id) => id && id !== "all")
       );
 
       const hasMentions = mentionTargets.size > 0;
 
       if (hasMentions) {
-        // 有 mention 则只回复被 @ 的成员
+        // If there are mentions, only respond to mentioned members
         const targetRequests = pendingRequests.filter(
           (r) => isPending(r) && r.agent_id && mentionTargets.has(r.agent_id)
         );
@@ -841,23 +841,23 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
           const result = await batchRespond(
             targetRequests.map((r) => r.request_id),
             input,
-            currentImages,
+            images,
             draftMentions
           );
           if (!result.success) {
-            setError(result.error || "发送失败");
+            setError(result.error || "Send failed");
             setBusy(false);
             return;
           }
           sent = true;
         }
       } else {
-        // 无 @ 则回复所有待处理
+        // Without mentions, respond to all pending
         const pendingIds = pendingRequests.filter(isPending).map((r) => r.request_id);
         if (pendingIds.length > 0) {
           const result = await batchRespond(pendingIds, input, images, draftMentions);
           if (!result.success) {
-            setError(result.error || "发送失败");
+            setError(result.error || "Send failed");
             setBusy(false);
             return;
           }
@@ -867,7 +867,7 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
     }
 
     if (!sent) {
-      setError("没有待回复的请求");
+      setError("No pending requests to answer");
       setBusy(false);
       return;
     }
@@ -885,7 +885,7 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
     setError(null);
     const result = await cancelRequest(requestId);
     if (!result.success) {
-      setError(result.error || "结束失败");
+      setError(result.error || "End failed");
       setBusy(false);
       return;
     }
@@ -901,7 +901,7 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
     setError(null);
     const result = await submitResponse(requestId, input, currentImages, draftMentions);
     if (!result.success) {
-      setError(result.error || "回复失败");
+      setError(result.error || "Reply failed");
       setBusy(false);
       return;
     }
@@ -934,12 +934,12 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
       if (next.length > 0) {
         setImages((prev) => [...prev, ...next]);
         if (failures.length > 0) {
-          setNotice(`已添加 ${next.length} 张图片，失败 ${failures.length} 张：${failures[0]}`);
+          setNotice(`Added ${next.length} image(s); failed ${failures.length}: ${failures[0]}`);
         } else {
-          setNotice(`已添加 ${next.length} 张图片`);
+          setNotice(`Added ${next.length} image(s)`);
         }
       } else {
-        setNotice(`选择了图片但解析失败：${failures[0] || "unknown error"}`);
+        setNotice(`Selected images but failed to parse: ${failures[0] || "unknown error"}`);
       }
     } finally {
       // allow selecting the same file again
@@ -1024,20 +1024,20 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
             <h2
               className={cn("font-semibold", "cursor-text")}
               onDoubleClick={beginEditTitle}
-              title="双击修改名称"
+              title="Double-click to rename"
             >
               {titleDisplay}
             </h2>
           )}
           {type === "group" && members.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              {members.length} 位成员
+              {members.length} member{members.length === 1 ? "" : "s"}
             </p>
           )}
         </div>
         {type === "group" && (
-          <span className="hidden sm:inline text-[11px] text-muted-foreground select-none mr-1" title="输入 @ 可提及成员">
-            @ 提及
+          <span className="hidden sm:inline text-[11px] text-muted-foreground select-none mr-1" title="Type @ to mention members">
+            @ mention
           </span>
         )}
       </div>
@@ -1054,7 +1054,7 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
           {loadingMore && (
             <div className="flex justify-center py-1">
               <span className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground shadow-sm">
-                加载中...
+                Loading...
               </span>
             </div>
           )}
@@ -1066,12 +1066,12 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
                 onClick={loadMore}
                 disabled={loadingMore}
               >
-                {loadingMore ? "加载中..." : "加载更多"}
+                {loadingMore ? "Loading..." : "Load more"}
               </Button>
             </div>
           )}
 
-          {/* Timeline: 所有消息按时间排序（分页） */}
+          {/* Timeline: all messages sorted by time (paged) */}
           {timeline.map((item, idx) => {
             const prev = idx > 0 ? timeline[idx - 1] : null;
 
@@ -1140,7 +1140,7 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
 
           {timeline.length === 0 && (
             <div className="flex h-40 items-center justify-center text-muted-foreground">
-              暂无消息
+              No messages yet
             </div>
           )}
         </div>
@@ -1192,7 +1192,7 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
       <Dialog open={!!previewImage} onOpenChange={(open) => !open && setPreviewImage(null)}>
         <DialogContent className="max-w-3xl glass-surface glass-noise">
           <DialogHeader>
-            <DialogTitle>预览</DialogTitle>
+            <DialogTitle>Preview</DialogTitle>
           </DialogHeader>
           {previewImage && (
             <div className="flex items-center justify-center">
@@ -1273,7 +1273,7 @@ function MessageBubble({
           )}
           title={
             isGroup && request.agent_id && onMentionAgent
-              ? "双击头像 @TA"
+              ? "Double-click avatar to @mention"
               : undefined
           }
           onDoubleClick={() => {
@@ -1315,10 +1315,10 @@ function MessageBubble({
           {isPending && (
             <>
               <Badge variant="default" className="text-xs shrink-0">
-                待回复
+                Pending
               </Badge>
               <Badge variant="outline" className="text-xs shrink-0">
-                等待 {getWaitingDuration(request.created_at || "")}
+                Waiting {getWaitingDuration(request.created_at || "")}
               </Badge>
               {onReply && (
                 <Button
@@ -1328,7 +1328,7 @@ function MessageBubble({
                   onClick={onReply}
                   disabled={disabled}
                 >
-                  回复
+                  Reply
                 </Button>
               )}
               {onCancel && (
@@ -1339,19 +1339,19 @@ function MessageBubble({
                   onClick={onCancel}
                   disabled={disabled}
                 >
-                  结束
+                  End
                 </Button>
               )}
             </>
           )}
           {request.status === "COMPLETED" && (
             <Badge variant="secondary" className="text-xs shrink-0">
-              已回复
+              Replied
             </Badge>
           )}
           {request.status === "CANCELLED" && (
             <Badge variant="destructive" className="text-xs shrink-0">
-              已结束
+              Ended
             </Badge>
           )}
         </div>
@@ -1415,7 +1415,7 @@ function UserResponseBubble({
             maxWidth: showAvatar ? "calc(100% - 3rem)" : "100%",
           }}
         >
-          <p className="text-sm text-muted-foreground italic">对话已结束</p>
+          <p className="text-sm text-muted-foreground italic">Conversation ended</p>
           <p className="text-xs text-muted-foreground mt-1">{formatFullTime(response.created_at)}</p>
         </div>
       </div>

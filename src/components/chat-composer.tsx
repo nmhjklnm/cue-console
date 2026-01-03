@@ -198,7 +198,7 @@ export function ChatComposer({
               }}
             >
               <div className="flex items-center justify-between px-3 pt-2">
-                <p className="text-[11px] text-muted-foreground">提及成员</p>
+                <p className="text-[11px] text-muted-foreground">Mention members</p>
                 <p className="text-[11px] text-muted-foreground">↑↓ / Enter</p>
               </div>
               <div
@@ -215,11 +215,11 @@ export function ChatComposer({
                 }}
               >
                 {mentionCandidates.length === 0 ? (
-                  <div className="px-3 py-2 text-sm text-muted-foreground">无匹配成员</div>
+                  <div className="px-3 py-2 text-sm text-muted-foreground">No matches</div>
                 ) : (
                   mentionCandidates.map((m, idx) => {
                     const isAll = m === "all";
-                    const label = isAll ? "所有人" : agentNameMap[m] || m;
+                    const label = isAll ? "All" : agentNameMap[m] || m;
                     const active = idx === mentionActive;
                     return (
                       <button
@@ -245,14 +245,14 @@ export function ChatComposer({
                             e.preventDefault();
                             e.stopPropagation();
                             const current = agentNameMap[m] || m;
-                            const next = window.prompt(`修改名称：${m}`, current);
+                            const next = window.prompt(`Rename: ${m}`, current);
                             if (!next) return;
                             void (async () => {
                               await setAgentDisplayName(m, next);
                               setAgentNameMap((prev) => ({ ...prev, [m]: next.trim() }));
                             })();
                           }}
-                          title={isAll ? undefined : "双击修改名称"}
+                          title={isAll ? undefined : "Double-click to rename"}
                         >
                           @{label}
                         </span>
@@ -281,16 +281,16 @@ export function ChatComposer({
               placeholder={
                 hasPendingRequests
                   ? type === "group"
-                    ? "输入内容…（Enter 发送，Shift+Enter 换行，可 @）"
-                    : "输入内容…（Enter 发送，Shift+Enter 换行）"
-                  : "等待新的待回复请求…"
+                    ? "Type... (Enter to send, Shift+Enter for newline, supports @)"
+                    : "Type... (Enter to send, Shift+Enter for newline)"
+                  : "Waiting for new pending requests..."
               }
               title={
                 !hasPendingRequests
-                  ? "当前没有待回复请求（PENDING/PROCESSING），发送按钮已禁用"
+                  ? "No pending requests (PENDING/PROCESSING). Send button is disabled."
                   : type === "group"
-                    ? "输入 @ 可提及成员，↑↓ 选择，Enter 插入；Enter 发送，Shift+Enter 换行"
-                    : "Enter 发送，Shift+Enter 换行"
+                    ? "Type @ to mention members; ↑↓ to navigate, Enter to insert; Enter to send, Shift+Enter for newline"
+                    : "Enter to send, Shift+Enter for newline"
               }
               value={input}
               onPaste={handlePaste}
@@ -440,7 +440,7 @@ export function ChatComposer({
                 )}
                 onClick={() => fileInputRef.current?.click()}
                 disabled={busy}
-                title="添加图片"
+                title="Add image"
               >
                 <Plus className="h-4.5 w-4.5" />
               </Button>
@@ -454,14 +454,14 @@ export function ChatComposer({
                   return;
                 }
                 if (!hasPendingRequests) {
-                  setNotice("当前没有待处理的提问");
+                  setNotice("No pending questions to answer.");
                   return;
                 }
                 if (!input.trim() && images.length === 0) {
-                  setNotice("请先输入要发送的内容，或选择一张图片。");
+                  setNotice("Enter a message to send, or select an image.");
                   return;
                 }
-                setNotice("暂时无法发送，请稍后再试。");
+                setNotice("Unable to send right now. Please try again later.");
               }}
               disabled={busy || (!canSend && (!input.trim() && images.length === 0))}
               className={cn(
@@ -472,7 +472,7 @@ export function ChatComposer({
                 (busy || (!canSend && (!input.trim() && images.length === 0))) &&
                   "opacity-40 hover:bg-transparent"
               )}
-              title={canSend ? "发送" : "请输入内容"}
+              title={canSend ? "Send" : "Enter a message"}
             >
               <Send className="h-4 w-4" />
             </Button>

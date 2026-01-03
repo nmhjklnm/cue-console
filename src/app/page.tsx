@@ -74,8 +74,8 @@ export default function Home() {
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center text-muted-foreground">
             <MessageCircle className="mb-4 h-16 w-16 opacity-50" />
-            <p className="text-lg">选择一个对话开始聊天</p>
-            <p className="mt-2 text-sm">或点击右上角 + 创建群聊</p>
+            <p className="text-lg">Select a conversation to start chatting</p>
+            <p className="mt-2 text-sm">Or click + in the top-right to create a group</p>
           </div>
         )}
       </div>

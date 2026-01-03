@@ -51,7 +51,7 @@ function initTables() {
     )
   `);
 
-  // 群组表
+  // Groups table
   database.exec(`
     CREATE TABLE IF NOT EXISTS groups (
       id TEXT PRIMARY KEY,
@@ -60,7 +60,7 @@ function initTables() {
     )
   `);
 
-  // 群成员表
+  // Group members table
   database.exec(`
     CREATE TABLE IF NOT EXISTS group_members (
       group_id TEXT NOT NULL,
@@ -109,7 +109,7 @@ export function getAgentDisplayNames(agentIds: string[]): Record<string, string>
   return map;
 }
 
-// 类型定义
+// Type definitions
 export interface CueRequest {
   id: number;
   request_id: string;
@@ -142,10 +142,10 @@ export type AgentTimelineItem =
       request_id: string;
     };
 
-// UserResponse, Group, GroupMember 从 types.ts 导入
+// UserResponse, Group, GroupMember are imported from types.ts
 export type { UserResponse, Group, GroupMember } from "./types";
 
-// 查询函数
+// Query functions
 export function getPendingRequests(): CueRequest[] {
   return getDb()
     .prepare(
@@ -343,21 +343,21 @@ export function sendResponse(
 ): void {
   const db = getDb();
 
-  // 插入响应
+  // Insert response
   db.prepare(
     `INSERT OR IGNORE INTO cue_responses (request_id, response_json, cancelled, created_at) 
      VALUES (?, ?, ?, datetime('now'))`
   ).run(requestId, JSON.stringify(response), cancelled ? 1 : 0);
 
-  // 更新请求状态
+  // Update request status
   db.prepare(
     `UPDATE cue_requests 
      SET status = ? 
-     WHERE request_id = ? AND status = 'PENDING'`
+     WHERE request_id = ?`
   ).run(cancelled ? "CANCELLED" : "COMPLETED", requestId);
 }
 
-// 群组相关函数
+// Group-related functions
 export function createGroup(id: string, name: string): void {
   getDb()
     .prepare(`INSERT INTO groups (id, name) VALUES (?, ?)`)

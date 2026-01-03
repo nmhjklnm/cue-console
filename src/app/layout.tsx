@@ -15,7 +15,7 @@ const geistMono = Recursive({
 
 export const metadata: Metadata = {
   title: "Cue Hub",
-  description: "AI Agent 群聊管理中心",
+  description: "AI agent group chat console",
 };
 
 export default function RootLayout({
@@ -24,7 +24,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning

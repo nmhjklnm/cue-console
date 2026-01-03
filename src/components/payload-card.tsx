@@ -49,9 +49,9 @@ export function PayloadCard({
           kind: "confirm",
           text: typeof obj.text === "string" ? obj.text : "",
           confirmLabel:
-            typeof obj.confirm_label === "string" ? obj.confirm_label : "确认",
+            typeof obj.confirm_label === "string" ? obj.confirm_label : "Confirm",
           cancelLabel:
-            typeof obj.cancel_label === "string" ? obj.cancel_label : "取消",
+            typeof obj.cancel_label === "string" ? obj.cancel_label : "Cancel",
         };
       }
 
@@ -93,13 +93,13 @@ export function PayloadCard({
         <div className="mb-2 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Badge variant="secondary" className="text-[11px]">
-              选择
+              Choice
             </Badge>
             {vm.allowMultiple && (
-              <span className="text-[11px] text-muted-foreground">可多选</span>
+              <span className="text-[11px] text-muted-foreground">Multiple allowed</span>
             )}
           </div>
-          <span className="text-[11px] text-muted-foreground">点击按钮填入输入框</span>
+          <span className="text-[11px] text-muted-foreground">Click a button to fill the input</span>
         </div>
         <div className="grid grid-cols-1 gap-2">
           {vm.options.length > 0 ? (
@@ -108,7 +108,7 @@ export function PayloadCard({
                 const o = opt as Record<string, unknown>;
                 const id = typeof o.id === "string" ? o.id : "";
                 const label = typeof o.label === "string" ? o.label : "";
-                const text = id && label ? `${id}：${label}` : id || label || "<empty>";
+                const text = id && label ? `${id}: ${label}` : id || label || "<empty>";
                 const pasteText = id || label || "";
                 const cleaned = pasteText.trim();
                 const isSelected = vm.allowMultiple && !!cleaned && selected.has(cleaned);
@@ -128,7 +128,7 @@ export function PayloadCard({
                     onClick={() =>
                       onPasteChoice?.(pasteText, vm.allowMultiple ? "append" : "replace")
                     }
-                    title={pasteText ? `点击粘贴：${pasteText}` : undefined}
+                    title={pasteText ? `Click to paste: ${pasteText}` : undefined}
                   >
                     {id && (
                       <span className="inline-flex h-5 items-center rounded-md bg-muted px-1.5 font-mono text-[11px] text-muted-foreground">
@@ -152,14 +152,14 @@ export function PayloadCard({
                   onClick={() =>
                     onPasteChoice?.(asText, vm.allowMultiple ? "append" : "replace")
                   }
-                  title={`点击粘贴：${asText}`}
+                  title={`Click to paste: ${asText}`}
                 >
                   {asText}
                 </Button>
               );
             })
           ) : (
-            <div className="text-muted-foreground">无选项</div>
+            <div className="text-muted-foreground">No options</div>
           )}
         </div>
       </div>
@@ -171,9 +171,9 @@ export function PayloadCard({
       <div className="mt-2 rounded-xl border bg-linear-to-b from-background to-muted/20 p-2.5 text-xs shadow-sm">
         <div className="mb-2 flex items-center justify-between gap-2">
           <Badge variant="secondary" className="text-[11px]">
-            确认
+            Confirm
           </Badge>
-          <span className="text-[11px] text-muted-foreground">点击按钮填入输入框</span>
+          <span className="text-[11px] text-muted-foreground">Click a button to fill the input</span>
         </div>
         {vm.text && <div className="mb-2 whitespace-pre-wrap leading-normal">{vm.text}</div>}
         <div className="flex flex-col gap-2">
@@ -184,7 +184,7 @@ export function PayloadCard({
             className="h-9 w-full rounded-xl px-3 text-xs"
             disabled={disabled || !onPasteChoice}
             onClick={() => onPasteChoice?.(vm.confirmLabel)}
-            title={`点击粘贴：${vm.confirmLabel}`}
+            title={`Click to paste: ${vm.confirmLabel}`}
           >
             {vm.confirmLabel}
           </Button>
@@ -195,7 +195,7 @@ export function PayloadCard({
             className="h-9 w-full rounded-xl px-3 text-xs"
             disabled={disabled || !onPasteChoice}
             onClick={() => onPasteChoice?.(vm.cancelLabel)}
-            title={`点击粘贴：${vm.cancelLabel}`}
+            title={`Click to paste: ${vm.cancelLabel}`}
           >
             {vm.cancelLabel}
           </Button>
@@ -209,9 +209,9 @@ export function PayloadCard({
     <div className="mt-2 rounded-xl border bg-linear-to-b from-background to-muted/20 p-2.5 text-xs shadow-sm">
       <div className="mb-2 flex items-center justify-between gap-2">
         <Badge variant="secondary" className="text-[11px]">
-          表单
+          Form
         </Badge>
-        <span className="text-[11px] text-muted-foreground">按字段填写（点击可插入）</span>
+        <span className="text-[11px] text-muted-foreground">Fill by field (click to insert)</span>
       </div>
       <div className="space-y-2">
         {vm.fields.length > 0 ? (
@@ -221,7 +221,7 @@ export function PayloadCard({
               const id = typeof fo.id === "string" ? fo.id : "";
               const label = typeof fo.label === "string" ? fo.label : "";
               const kind = typeof fo.kind === "string" ? fo.kind : "";
-              const name = label || id || "字段";
+              const name = label || id || "Field";
               const pasteText = id || label || "";
 
               return (
@@ -235,7 +235,7 @@ export function PayloadCard({
                   )}
                   disabled={disabled || !onPasteChoice || !pasteText}
                   onClick={() => onPasteChoice?.(pasteText)}
-                  title={pasteText ? `点击粘贴：${pasteText}` : undefined}
+                  title={pasteText ? `Click to paste: ${pasteText}` : undefined}
                 >
                   <div className="flex items-center gap-2">
                     <span className="min-w-0 flex-1 truncate text-[13px]">{name}</span>
@@ -260,14 +260,14 @@ export function PayloadCard({
                 className="w-full rounded-xl border bg-background/60 px-3 py-2 text-left text-[13px] hover:bg-background/80 hover:shadow-sm transition disabled:opacity-60"
                 disabled={disabled || !onPasteChoice}
                 onClick={() => onPasteChoice?.(asText)}
-                title={`点击粘贴：${asText}`}
+                title={`Click to paste: ${asText}`}
               >
                 {asText}
               </button>
             );
           })
         ) : (
-          <div className="text-muted-foreground">无字段</div>
+          <div className="text-muted-foreground">No fields</div>
         )}
       </div>
     </div>

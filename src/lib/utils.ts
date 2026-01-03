@@ -5,7 +5,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-// Agent 名字解析
+// Agent name parsing
 export function parseAgentName(name: string): {
   adjective: string;
   animal: string;
@@ -22,7 +22,7 @@ export function parseAgentName(name: string): {
   return { adjective: "", animal: name, number: "" };
 }
 
-// 获取动物 emoji
+// Map animal name -> emoji
 const animalEmojis: Record<string, string> = {
   fox: "🦊",
   deer: "🦌",
@@ -61,27 +61,28 @@ export function getAgentEmoji(name: string): string {
   return animalEmojis[animal.toLowerCase()] || "🤖";
 }
 
-// 时间格式化 - 将 UTC 时间转为中国时区
+// Time formatting - convert UTC time to Asia/Shanghai
 export function formatTime(dateStr: string): string {
-  // 数据库存储的是 UTC 时间，需要转换
-  const date = new Date(dateStr + "Z"); // 添加 Z 表示 UTC
+  // The database stores UTC time
+  const date = new Date(dateStr + "Z");
   const now = new Date();
   const diff = now.getTime() - date.getTime();
 
   if (diff < 60000) {
-    return "刚刚";
+    return "just now";
   }
   if (diff < 3600000) {
-    return `${Math.floor(diff / 60000)}分钟前`;
+    return `${Math.floor(diff / 60000)}m ago`;
   }
   if (diff < 86400000) {
-    return date.toLocaleTimeString("zh-CN", {
+    return date.toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
+      hour12: false,
       timeZone: "Asia/Shanghai",
     });
   }
-  return date.toLocaleDateString("zh-CN", {
+  return date.toLocaleDateString("en-US", {
     month: "2-digit",
     day: "2-digit",
     timeZone: "Asia/Shanghai",
@@ -90,19 +91,20 @@ export function formatTime(dateStr: string): string {
 
 export function formatFullTime(dateStr: string): string {
   const date = new Date(dateStr + "Z");
-  return date.toLocaleString("zh-CN", {
+  return date.toLocaleString("en-US", {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+    hour12: false,
     timeZone: "Asia/Shanghai",
   });
 }
 
-// 计算等待时长
+// Waiting duration
 export function getWaitingDuration(dateStr: string): string {
-  const date = new Date(dateStr + "Z"); // UTC 时间
+  const date = new Date(dateStr + "Z");
   const now = new Date();
   const diff = now.getTime() - date.getTime();
 
@@ -110,18 +112,18 @@ export function getWaitingDuration(dateStr: string): string {
   const seconds = Math.floor((diff % 60000) / 1000);
 
   if (minutes > 0) {
-    return `${minutes}分${seconds}秒`;
+    return `${minutes}m${seconds}s`;
   }
-  return `${seconds}秒`;
+  return `${seconds}s`;
 }
 
-// 文本截断
+// Truncate text
 export function truncateText(text: string, maxLength: number = 30): string {
   if (text.length <= maxLength) return text;
   return text.slice(0, maxLength) + "...";
 }
 
-// @ 解析
+// @ mention parsing
 export function parseAtMentions(text: string): string[] {
   const regex = /@([\w-]+)/g;
   const matches = text.matchAll(regex);

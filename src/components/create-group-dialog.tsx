@@ -78,7 +78,7 @@ export function CreateGroupDialog({
   };
 
   const handleCreate = async () => {
-    const groupName = name.trim() || (mode === "quick" ? "最近聊天" : "新群聊");
+    const groupName = name.trim() || (mode === "quick" ? "Recent" : "New group");
     const members = membersForMode();
     if (members.length === 0) return;
 
@@ -86,7 +86,7 @@ export function CreateGroupDialog({
     try {
       const result = await createNewGroup(groupName, members);
       if (!result.success) {
-        alert(result.error || "创建失败");
+        alert(result.error || "Create failed");
         return;
       }
       onCreated(result.id, result.name);
@@ -100,9 +100,9 @@ export function CreateGroupDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md glass-surface-opaque glass-noise">
         <DialogHeader>
-          <DialogTitle>创建群聊</DialogTitle>
+          <DialogTitle>Create group chat</DialogTitle>
           <DialogDescription className="sr-only">
-            创建一个群聊并选择要加入的成员
+            Create a group chat and choose members to join
           </DialogDescription>
         </DialogHeader>
 
@@ -119,7 +119,7 @@ export function CreateGroupDialog({
               onClick={() => setMode("quick")}
               disabled={loading}
             >
-              一键创群（最近 5）
+              Quick create (recent 5)
             </button>
             <button
               type="button"
@@ -132,14 +132,14 @@ export function CreateGroupDialog({
               onClick={() => setMode("select")}
               disabled={loading}
             >
-              选定创群
+              Select members
             </button>
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium">群名称</label>
+            <label className="mb-2 block text-sm font-medium">Group name</label>
             <Input
-              placeholder="输入群聊名称"
+              placeholder="Enter group name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="bg-white/80"
@@ -148,10 +148,10 @@ export function CreateGroupDialog({
 
           {mode === "quick" ? (
             <div>
-              <label className="mb-2 block text-sm font-medium">将加入的成员</label>
+              <label className="mb-2 block text-sm font-medium">Members to add</label>
               <div className="rounded-xl border bg-white/60 p-3">
                 {recentAgents.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">暂无最近聊天的 Agent</p>
+                  <p className="text-sm text-muted-foreground">No recent agents</p>
                 ) : (
                   <div className="flex flex-wrap gap-2">
                     {recentAgents.map((a) => (
@@ -171,12 +171,12 @@ export function CreateGroupDialog({
           ) : (
             <div>
               <label className="mb-2 block text-sm font-medium">
-                选择成员 ({selected.size} 已选)
+                Select members ({selected.size} selected)
               </label>
               <ScrollArea className="h-60 rounded-md border bg-white/55 p-2">
                 {agents.length === 0 ? (
                   <p className="py-8 text-center text-sm text-muted-foreground">
-                    暂无可添加的 Agent
+                    No agents available
                   </p>
                 ) : (
                   <div className="space-y-1">
@@ -205,13 +205,13 @@ export function CreateGroupDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            取消
+            Cancel
           </Button>
           <Button
             onClick={handleCreate}
             disabled={membersForMode().length === 0 || loading}
           >
-            {loading ? "创建中..." : "创建"}
+            {loading ? "Creating..." : "Create"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -225,7 +225,7 @@ export function ConversationList({
               className="h-9 w-9"
               onClick={onToggleCollapsed}
               disabled={!onToggleCollapsed}
-              title="展开侧边栏"
+              title="Expand sidebar"
             >
               <ChevronRight className="h-5 w-5" />
             </Button>
@@ -234,7 +234,7 @@ export function ConversationList({
               size="icon"
               className="h-9 w-9"
               onClick={onCreateGroup}
-              title="创建群聊"
+              title="Create group"
             >
               <Plus className="h-5 w-5" />
             </Button>
@@ -248,7 +248,7 @@ export function ConversationList({
                 size="icon"
                 onClick={onToggleCollapsed}
                 disabled={!onToggleCollapsed}
-                title="折叠侧边栏"
+                title="Collapse sidebar"
               >
                 <ChevronLeft className="h-5 w-5" />
               </Button>
@@ -256,7 +256,7 @@ export function ConversationList({
                 variant="ghost"
                 size="icon"
                 onClick={onCreateGroup}
-                title="创建群聊"
+                title="Create group"
               >
                 <Plus className="h-5 w-5" />
               </Button>
@@ -271,7 +271,7 @@ export function ConversationList({
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="搜索"
+              placeholder="Search"
               className="pl-8 h-9 bg-white/45 border-white/40 focus-visible:border-ring"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -347,7 +347,7 @@ export function ConversationList({
                   )}
                 />
                 <Users className="h-4 w-4 shrink-0" />
-                <span>群聊</span>
+                <span>Groups</span>
                 {groupsPendingTotal > 0 && (
                   <Badge variant="destructive" className="h-5 min-w-5 px-1.5 text-xs">
                     {groupsPendingTotal}
@@ -383,7 +383,7 @@ export function ConversationList({
                   )}
                 />
                 <Bot className="h-4 w-4 shrink-0" />
-                <span>单聊</span>
+                <span>Agents</span>
               </CollapsibleTrigger>
               <CollapsibleContent className="mt-1 space-y-0.5">
                 {agents.map((item) => (
@@ -406,7 +406,7 @@ export function ConversationList({
           {filtered.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <MessageCircle className="mb-2 h-8 w-8" />
-              <p className="text-sm">暂无对话</p>
+              <p className="text-sm">No conversations</p>
             </div>
           )}
           </div>
@@ -419,27 +419,26 @@ export function ConversationList({
           style={{ left: menu.x, top: menu.y }}
           onPointerDown={(e) => e.stopPropagation()}
         >
-          {menu.item ? (
+          {menu.open && menu.item ? (
             <button
-              className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-accent"
+              className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-accent"
               onClick={() => {
-                if (!menu.item) return;
-                hideConversation(menu.item);
+                if (menu.item) hideConversation(menu.item);
                 setMenu({ open: false });
               }}
             >
-              清除对话
+              Hide conversation
             </button>
           ) : (
             <button
-              className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-accent disabled:opacity-50"
+              className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-accent disabled:opacity-50"
               onClick={() => {
                 restoreAllHidden();
                 setMenu({ open: false });
               }}
               disabled={hiddenKeys.size === 0}
             >
-              恢复已清除对话
+              Restore hidden conversations
             </button>
           )}
         </div>

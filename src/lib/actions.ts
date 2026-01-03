@@ -27,7 +27,7 @@ import {
   type CueResponse,
 } from "./db";
 
-// 从统一类型文件导入和导出
+// Import/export from the shared types file
 import type { ConversationItem, UserResponse } from "./types";
 export type { Group, UserResponse, ImageContent, ConversationItem } from "./types";
 export type { CueRequest, CueResponse, AgentTimelineItem } from "./db";
@@ -42,7 +42,7 @@ export async function setAgentDisplayName(agentId: string, displayName: string) 
   return { success: true } as const;
 }
 
-// Agent 相关
+// Agent
 export async function fetchAllAgents() {
   return getAllAgents();
 }
@@ -75,7 +75,7 @@ export async function fetchPendingRequests() {
   return getPendingRequests();
 }
 
-// 响应相关
+// Responses
 export async function submitResponse(
   requestId: string,
   text: string,
@@ -135,7 +135,7 @@ export async function batchRespond(
   }
 }
 
-// 群组相关
+// Groups
 export async function fetchAllGroups() {
   return getAllGroups();
 }
@@ -199,7 +199,7 @@ export async function setGroupName(groupId: string, name: string) {
   return { success: true } as const;
 }
 
-// 综合数据获取
+// Aggregated data
 export async function fetchConversationList(): Promise<ConversationItem[]> {
   const agents = getAllAgents();
   const groups = getAllGroups();
@@ -216,15 +216,15 @@ export async function fetchConversationList(): Promise<ConversationItem[]> {
         images?: unknown[];
       };
       const text = (parsed.text || "").trim();
-      if (text) return `你: ${text}`;
-      if (Array.isArray(parsed.images) && parsed.images.length > 0) return "你: [图片]";
-      return "你: [消息]";
+      if (text) return `You: ${text}`;
+      if (Array.isArray(parsed.images) && parsed.images.length > 0) return "You: [image]";
+      return "You: [message]";
     } catch {
-      return "你: [消息]";
+      return "You: [message]";
     }
   };
 
-  // 添加群组
+  // Groups
   for (const group of groups) {
     const pendingCount = getGroupPendingCount(group.id);
     const members = getGroupMembers(group.id);
@@ -248,7 +248,7 @@ export async function fetchConversationList(): Promise<ConversationItem[]> {
       type: "group",
       id: group.id,
       name: group.name,
-      displayName: `${group.name} (${members.length}人)`,
+      displayName: `${group.name} (${members.length} members)`,
       pendingCount,
       lastMessage: (
         lastIsResp
@@ -261,7 +261,7 @@ export async function fetchConversationList(): Promise<ConversationItem[]> {
     });
   }
 
-  // 添加单聊 agent
+  // Agents
   for (const agent of agents) {
     const pendingCount = getPendingCountByAgent(agent);
     const lastReq = getAgentLastRequest(agent);
@@ -270,7 +270,7 @@ export async function fetchConversationList(): Promise<ConversationItem[]> {
     const lastRespTime = lastResp?.created_at;
 
     const respMsg = responsePreview(lastResp);
-    const reqMsg = lastReq?.prompt ? `对方: ${lastReq.prompt}` : undefined;
+    const reqMsg = lastReq?.prompt ? `Other: ${lastReq.prompt}` : undefined;
 
     const lastIsResp =
       !!lastRespTime &&
@@ -287,7 +287,7 @@ export async function fetchConversationList(): Promise<ConversationItem[]> {
     });
   }
 
-  // 待回复置顶 + 按最后时间排序
+  // Pin pending first, then sort by last activity time
   items.sort((a, b) => {
     if (a.pendingCount > 0 && b.pendingCount === 0) return -1;
     if (a.pendingCount === 0 && b.pendingCount > 0) return 1;
