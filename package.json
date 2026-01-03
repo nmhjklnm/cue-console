@@ -1,7 +1,24 @@
 {
-  "name": "cue-hub",
+  "name": "cue-console",
   "version": "0.1.0",
-  "private": true,
+  "description": "Cue Hub console launcher (Next.js UI)",
+  "license": "Apache-2.0",
+  "keywords": ["mcp", "cue", "console", "nextjs"],
+  "bin": {
+    "cue-console": "bin/cue-console.js"
+  },
+  "files": [
+    "bin",
+    "public",
+    "src",
+    "next-env.d.ts",
+    "next.config.ts",
+    "postcss.config.mjs",
+    "components.json",
+    "tsconfig.json",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
