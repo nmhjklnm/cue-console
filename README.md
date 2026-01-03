@@ -22,7 +22,7 @@ Run the console and pair it with `cuemcp`.
 
 ### Step 1: Start `cuemcp`
 
-Add and run the MCP server in your agent/runtime (see [`cue-mcp`](../cue-mcp) for client-specific MCP configuration).
+Add and run the MCP server in your agent/runtime (see [`cue-mcp`](https://github.com/nmhjklnm/cue-mcp) for client-specific MCP configuration).
 
 ### Step 2: Start `cue-console`
 
@@ -31,6 +31,13 @@ cue-console dev --port 3000
 ```
 
 Open `http://localhost:3000`.
+
+---
+
+## Notes
+
+- The current version can occasionally disconnect (for example, the agent replies directly without calling `cue()` at the end).
+- If you get disconnected, type `cue` in the affected runtime to trigger auto-reconnect.
 
 ---
 
