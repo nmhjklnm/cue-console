@@ -2,7 +2,7 @@
 
 | Mobile | Desktop |
 | --- | --- |
-| ![Mobile screenshot](../iphone.png) | ![Desktop screenshot](../desktop.png) |
+| ![Mobile screenshot](./assets/iphone.png) | ![Desktop screenshot](./assets/desktop.png) |
 
 ---
 
