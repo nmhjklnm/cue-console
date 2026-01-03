@@ -39,6 +39,44 @@ Open `http://localhost:3000`.
 - The current version can occasionally disconnect (for example, the agent replies directly without calling `cue()` at the end).
 - If you get disconnected, type `cue` in the affected runtime to trigger auto-reconnect.
 
+<details>
+<summary>Human Agent Protocol (HAP) rules (required)</summary>
+
+```text
+Human Agent Protocol (HAP)
+
+Hard rule: the agent must call the `cue` tool at the end of every response, no exceptions.
+Always use the cue MCP to provide a final summary, ask a question, or request input.
+
+Convention: when the user types `cue`, the user is accepting the HAP rules (supports disconnect + reconnect).
+
+- First-time connection / no agent_id: call join() to obtain an agent_id, then call cue().
+- Reconnect / existing agent_id (e.g. the cue call timed out but the chat continued):
+  when the user types cue again, prefer calling cue() with the existing agent_id;
+  only call join() again if you cannot determine the agent_id.
+
+When to call
+
+- On first message in a new chat (no history): call join().
+- After completing any task: call cue().
+- Before ending any response: call cue().
+
+Forbidden behavior
+
+- Using a self-chosen name without calling join() first.
+- Ending a reply without calling cue().
+- Replacing cue() with "let me know if you need anything else".
+- Assuming there are no follow-ups.
+
+Notes
+
+If you are not sure whether to call it, call it.
+
+Not calling cue() means the user cannot continue the interaction.
+```
+
+</details>
+
 ---
 
 ## Pairing with cuemcp
