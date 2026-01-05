@@ -928,6 +928,25 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
     setBusy(false);
   };
 
+  const handleSubmitConfirm = async (requestId: string, text: string, cancelled: boolean) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+
+    const result = cancelled
+      ? await cancelRequest(requestId)
+      : await submitResponse(requestId, text, [], []);
+
+    if (!result.success) {
+      setError(result.error || "Send failed");
+      setBusy(false);
+      return;
+    }
+
+    await refreshLatest();
+    setBusy(false);
+  };
+
   const handleCancel = async (requestId: string) => {
     if (busy) return;
     setBusy(true);
@@ -1173,6 +1192,7 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
                     currentInput={input}
                     isGroup={type === "group"}
                     onPasteChoice={pasteToInput}
+                    onSubmitConfirm={handleSubmitConfirm}
                     onMentionAgent={(agentId) => insertMentionAtCursor(agentId, agentId)}
                     onReply={() => handleReply(item.request.request_id)}
                     onCancel={() => handleCancel(item.request.request_id)}
@@ -1280,6 +1300,7 @@ function MessageBubble({
   currentInput,
   isGroup,
   onPasteChoice,
+  onSubmitConfirm,
   onMentionAgent,
   onReply,
   onCancel,
@@ -1295,11 +1316,22 @@ function MessageBubble({
   currentInput?: string;
   isGroup?: boolean;
   onPasteChoice?: (text: string, mode?: "replace" | "append" | "upsert") => void;
+  onSubmitConfirm?: (requestId: string, text: string, cancelled: boolean) => void | Promise<void>;
   onMentionAgent?: (agentId: string) => void;
   onReply?: () => void;
   onCancel?: () => void;
 }) {
   const isPending = request.status === "PENDING";
+
+  const isPause = useMemo(() => {
+    if (!request.payload) return false;
+    try {
+      const obj = JSON.parse(request.payload) as Record<string, unknown>;
+      return obj?.type === "confirm" && obj?.variant === "pause";
+    } catch {
+      return false;
+    }
+  }, [request.payload]);
 
   const selectedLines = useMemo(() => {
     const text = (currentInput || "").trim();
@@ -1366,6 +1398,9 @@ function MessageBubble({
             raw={request.payload}
             disabled={disabled}
             onPasteChoice={onPasteChoice}
+            onSubmitConfirm={(text, cancelled) =>
+              isPending ? onSubmitConfirm?.(request.request_id, text, cancelled) : undefined
+            }
             selectedLines={selectedLines}
           />
         </div>
@@ -1373,33 +1408,37 @@ function MessageBubble({
           <span className="shrink-0">{formatFullTime(request.created_at || "")}</span>
           {isPending && (
             <>
-              <Badge variant="default" className="text-xs shrink-0">
-                Pending
-              </Badge>
               <Badge variant="outline" className="text-xs shrink-0">
                 Waiting {getWaitingDuration(request.created_at || "")}
               </Badge>
-              {onReply && (
-                <Button
-                  variant="link"
-                  size="sm"
-                  className="h-auto p-0 text-xs"
-                  onClick={onReply}
-                  disabled={disabled}
-                >
-                  Reply
-                </Button>
-              )}
-              {onCancel && (
-                <Button
-                  variant="link"
-                  size="sm"
-                  className="h-auto p-0 text-xs text-destructive"
-                  onClick={onCancel}
-                  disabled={disabled}
-                >
-                  End
-                </Button>
+              {!isPause && (
+                <>
+                  <Badge variant="default" className="text-xs shrink-0">
+                    Pending
+                  </Badge>
+                  {onReply && (
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs"
+                      onClick={onReply}
+                      disabled={disabled}
+                    >
+                      Reply
+                    </Button>
+                  )}
+                  {onCancel && (
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs text-destructive"
+                      onClick={onCancel}
+                      disabled={disabled}
+                    >
+                      End
+                    </Button>
+                  )}
+                </>
               )}
             </>
           )}

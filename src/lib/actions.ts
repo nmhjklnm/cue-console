@@ -5,6 +5,7 @@ import {
   getRequestsByAgent,
   getResponsesByAgent,
   getAllAgents,
+  getConversationMetaMap,
   getAgentDisplayNames,
   upsertAgentDisplayName,
   getAgentLastRequest,
@@ -12,6 +13,10 @@ import {
   getAgentTimeline,
   getAgentLastResponse,
   sendResponse,
+  archiveConversation,
+  unarchiveConversation,
+  deleteConversation,
+  getArchivedConversationCount,
   createGroup,
   getAllGroups,
   getGroupMembers,
@@ -39,6 +44,52 @@ export async function fetchAgentDisplayNames(agentIds: string[]) {
 
 export async function setAgentDisplayName(agentId: string, displayName: string) {
   upsertAgentDisplayName(agentId, displayName);
+  return { success: true } as const;
+}
+
+export async function fetchArchivedConversationCount() {
+  return getArchivedConversationCount();
+}
+
+function parseConversationKey(key: string): { type: "agent" | "group"; id: string } | null {
+  const idx = key.indexOf(":");
+  if (idx <= 0) return null;
+  const type = key.slice(0, idx);
+  const id = key.slice(idx + 1);
+  if ((type !== "agent" && type !== "group") || !id) return null;
+  return { type, id };
+}
+
+export async function archiveConversations(keys: string[]) {
+  const unique = Array.from(new Set(keys));
+  for (const k of unique) {
+    const parsed = parseConversationKey(k);
+    if (!parsed) continue;
+    archiveConversation(parsed.type, parsed.id);
+  }
+  return { success: true } as const;
+}
+
+export async function unarchiveConversations(keys: string[]) {
+  const unique = Array.from(new Set(keys));
+  for (const k of unique) {
+    const parsed = parseConversationKey(k);
+    if (!parsed) continue;
+    unarchiveConversation(parsed.type, parsed.id);
+  }
+  return { success: true } as const;
+}
+
+export async function deleteConversations(keys: string[]) {
+  const unique = Array.from(new Set(keys));
+  for (const k of unique) {
+    const parsed = parseConversationKey(k);
+    if (!parsed) continue;
+    deleteConversation(parsed.type, parsed.id);
+    if (parsed.type === "group") {
+      deleteGroup(parsed.id);
+    }
+  }
   return { success: true } as const;
 }
 
@@ -200,9 +251,31 @@ export async function setGroupName(groupId: string, name: string) {
 }
 
 // Aggregated data
-export async function fetchConversationList(): Promise<ConversationItem[]> {
-  const agents = getAllAgents();
-  const groups = getAllGroups();
+export async function fetchConversationList(options?: {
+  view?: "active" | "archived";
+}): Promise<ConversationItem[]> {
+  const view = options?.view ?? "active";
+  const wantArchived = view === "archived";
+
+  const agentsAll = wantArchived ? getAllAgents({ includeArchived: true }) : getAllAgents();
+  const groupsAll = wantArchived ? getAllGroups({ includeArchived: true }) : getAllGroups();
+
+  const agentMeta = wantArchived
+    ? getConversationMetaMap("agent", agentsAll)
+    : {};
+  const groupMeta = wantArchived
+    ? getConversationMetaMap(
+        "group",
+        groupsAll.map((g) => g.id)
+      )
+    : {};
+
+  const agents = wantArchived
+    ? agentsAll.filter((id) => agentMeta[id]?.archived === 1)
+    : agentsAll;
+  const groups = wantArchived
+    ? groupsAll.filter((g) => groupMeta[g.id]?.archived === 1)
+    : groupsAll;
 
   const agentNameMap = getAgentDisplayNames(agents);
 

@@ -64,7 +64,7 @@ export function getAgentEmoji(name: string): string {
 // Time formatting - convert UTC time to Asia/Shanghai
 export function formatTime(dateStr: string): string {
   // The database stores UTC time
-  const date = new Date(dateStr + "Z");
+  const date = new Date((dateStr || "").replace(" ", "T"));
   const now = new Date();
   const diff = now.getTime() - date.getTime();
 
@@ -90,7 +90,7 @@ export function formatTime(dateStr: string): string {
 }
 
 export function formatFullTime(dateStr: string): string {
-  const date = new Date(dateStr + "Z");
+  const date = new Date((dateStr || "").replace(" ", "T"));
   return date.toLocaleString("en-US", {
     month: "2-digit",
     day: "2-digit",
@@ -104,7 +104,7 @@ export function formatFullTime(dateStr: string): string {
 
 // Waiting duration
 export function getWaitingDuration(dateStr: string): string {
-  const date = new Date(dateStr + "Z");
+  const date = new Date((dateStr || "").replace(" ", "T"));
   const now = new Date();
   const diff = now.getTime() - date.getTime();
 

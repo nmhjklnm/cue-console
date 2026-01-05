@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { mkdirSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import type { UserResponse, Group } from "./types";
@@ -9,6 +10,7 @@ let db: Database.Database | null = null;
 
 export function getDb(): Database.Database {
   if (!db) {
+    mkdirSync(join(homedir(), ".cue"), { recursive: true });
     db = new Database(DB_PATH);
     db.pragma("journal_mode = WAL");
     initTables();
@@ -70,6 +72,104 @@ function initTables() {
       FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
     )
   `);
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS conversation_meta (
+      key TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      id TEXT NOT NULL,
+      archived INTEGER NOT NULL DEFAULT 0,
+      archived_at DATETIME,
+      deleted INTEGER NOT NULL DEFAULT 0,
+      deleted_at DATETIME
+    )
+  `);
+}
+
+function metaKey(type: "agent" | "group", id: string): string {
+  return `${type}:${id}`;
+}
+
+export interface ConversationMeta {
+  key: string;
+  type: "agent" | "group";
+  id: string;
+  archived: 0 | 1;
+  archived_at: string | null;
+  deleted: 0 | 1;
+  deleted_at: string | null;
+}
+
+export function getConversationMeta(type: "agent" | "group", id: string): ConversationMeta | undefined {
+  return getDb()
+    .prepare(`SELECT * FROM conversation_meta WHERE key = ?`)
+    .get(metaKey(type, id)) as ConversationMeta | undefined;
+}
+
+export function getConversationMetaMap(type: "agent" | "group", ids: string[]): Record<string, ConversationMeta> {
+  const unique = Array.from(new Set(ids.filter(Boolean)));
+  if (unique.length === 0) return {};
+  const keys = unique.map((id) => metaKey(type, id));
+  const placeholders = keys.map(() => "?").join(",");
+  const rows = getDb()
+    .prepare(`SELECT * FROM conversation_meta WHERE key IN (${placeholders})`)
+    .all(...keys) as ConversationMeta[];
+  const map: Record<string, ConversationMeta> = {};
+  for (const r of rows) map[r.id] = r;
+  return map;
+}
+
+function ensureConversationMeta(type: "agent" | "group", id: string): void {
+  getDb()
+    .prepare(
+      `INSERT OR IGNORE INTO conversation_meta (key, type, id, archived, deleted)
+       VALUES (?, ?, ?, 0, 0)`
+    )
+    .run(metaKey(type, id), type, id);
+}
+
+export function archiveConversation(type: "agent" | "group", id: string): void {
+  ensureConversationMeta(type, id);
+  getDb()
+    .prepare(
+      `UPDATE conversation_meta
+       SET archived = 1, archived_at = datetime('now')
+       WHERE key = ?`
+    )
+    .run(metaKey(type, id));
+}
+
+export function unarchiveConversation(type: "agent" | "group", id: string): void {
+  ensureConversationMeta(type, id);
+  getDb()
+    .prepare(
+      `UPDATE conversation_meta
+       SET archived = 0, archived_at = NULL
+       WHERE key = ?`
+    )
+    .run(metaKey(type, id));
+}
+
+export function deleteConversation(type: "agent" | "group", id: string): void {
+  ensureConversationMeta(type, id);
+  getDb()
+    .prepare(
+      `UPDATE conversation_meta
+       SET deleted = 1, deleted_at = datetime('now')
+       WHERE key = ?`
+    )
+    .run(metaKey(type, id));
+}
+
+export function getArchivedConversationCount(): number {
+  const row = getDb()
+    .prepare(
+      `SELECT COUNT(*) as count
+       FROM conversation_meta
+       WHERE archived = 1 AND deleted = 0`
+    )
+    .get() as { count: number };
+  return row.count;
 }
 
 export function getAgentDisplayName(agentId: string): string | undefined {
@@ -301,7 +401,8 @@ export function getAgentTimeline(
   return { items, nextCursor };
 }
 
-export function getAllAgents(): string[] {
+export function getAllAgents(options?: { includeArchived?: boolean }): string[] {
+  const includeArchived = options?.includeArchived ?? false;
   const results = getDb()
     .prepare(
       `SELECT agent_id, MAX(created_at) as last_time FROM cue_requests 
@@ -310,7 +411,15 @@ export function getAllAgents(): string[] {
        ORDER BY last_time DESC`
     )
     .all() as { agent_id: string }[];
-  return results.map((r) => r.agent_id);
+
+  const ids = results.map((r) => r.agent_id);
+  const metaMap = getConversationMetaMap("agent", ids);
+  return ids.filter((id) => {
+    const m = metaMap[id];
+    if (m?.deleted === 1) return false;
+    if (!includeArchived && m?.archived === 1) return false;
+    return true;
+  });
 }
 
 export function getAgentLastRequest(
@@ -346,7 +455,7 @@ export function sendResponse(
   // Insert response
   db.prepare(
     `INSERT OR IGNORE INTO cue_responses (request_id, response_json, cancelled, created_at) 
-     VALUES (?, ?, ?, datetime('now'))`
+     VALUES (?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now', 'localtime'))`
   ).run(requestId, JSON.stringify(response), cancelled ? 1 : 0);
 
   // Update request status
@@ -364,10 +473,20 @@ export function createGroup(id: string, name: string): void {
     .run(id, name);
 }
 
-export function getAllGroups(): Group[] {
-  return getDb()
+export function getAllGroups(options?: { includeArchived?: boolean }): Group[] {
+  const includeArchived = options?.includeArchived ?? false;
+  const groups = getDb()
     .prepare(`SELECT * FROM groups ORDER BY created_at DESC`)
     .all() as Group[];
+
+  const ids = groups.map((g) => g.id);
+  const metaMap = getConversationMetaMap("group", ids);
+  return groups.filter((g) => {
+    const m = metaMap[g.id];
+    if (m?.deleted === 1) return false;
+    if (!includeArchived && m?.archived === 1) return false;
+    return true;
+  });
 }
 
 export function getGroupMembers(groupId: string): string[] {
