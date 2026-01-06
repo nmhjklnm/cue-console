@@ -11,6 +11,11 @@ import {
 } from "@/components/ui/collapsible";
 import { cn, getAgentEmoji, formatTime, truncateText } from "@/lib/utils";
 import {
+  getOrInitAvatarSeed,
+  getOrInitGroupAvatarSeed,
+  thumbsAvatarDataUrl,
+} from "@/lib/avatar";
+import {
   archiveConversations,
   deleteConversations,
   fetchArchivedConversationCount,
@@ -56,6 +61,7 @@ export function ConversationList({
   onToggleCollapsed,
 }: ConversationListProps) {
   const [items, setItems] = useState<ConversationItem[]>([]);
+  const [avatarUrlMap, setAvatarUrlMap] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"active" | "archived">("active");
   const [archivedCount, setArchivedCount] = useState(0);
@@ -75,6 +81,24 @@ export function ConversationList({
         key: string;
       }
   >({ open: false });
+
+  const ensureAvatarUrl = useCallback(async (kind: "agent" | "group", rawId: string) => {
+    if (!rawId) return;
+    const key = `${kind}:${rawId}`;
+    setAvatarUrlMap((prev) => {
+      if (prev[key]) return prev;
+      return { ...prev, [key]: "" };
+    });
+
+    try {
+      const seed =
+        kind === "agent" ? getOrInitAvatarSeed(rawId) : getOrInitGroupAvatarSeed(rawId);
+      const url = await thumbsAvatarDataUrl(seed);
+      setAvatarUrlMap((prev) => ({ ...prev, [key]: url }));
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const [moreMenu, setMoreMenu] = useState<
     | { open: false }
@@ -115,9 +139,27 @@ export function ConversationList({
       );
     };
 
+    const onAvatarSeedUpdated = (evt: Event) => {
+      const e = evt as CustomEvent<{ kind: "agent" | "group"; id: string; seed: string }>;
+      const kind = e.detail?.kind;
+      const rawId = e.detail?.id;
+      const seed = e.detail?.seed;
+      if (!kind || !rawId || !seed) return;
+      void (async () => {
+        try {
+          const url = await thumbsAvatarDataUrl(seed);
+          setAvatarUrlMap((prev) => ({ ...prev, [`${kind}:${rawId}`]: url }));
+        } catch {
+          // ignore
+        }
+      })();
+    };
+
     window.addEventListener("cuehub:agentDisplayNameUpdated", onAgentNameUpdated);
+    window.addEventListener("cue-console:avatarSeedUpdated", onAvatarSeedUpdated);
     return () => {
       window.removeEventListener("cuehub:agentDisplayNameUpdated", onAgentNameUpdated);
+      window.removeEventListener("cue-console:avatarSeedUpdated", onAvatarSeedUpdated);
     };
   }, []);
 
@@ -127,6 +169,12 @@ export function ConversationList({
     const count = await fetchArchivedConversationCount();
     setArchivedCount(count);
   }, [view]);
+
+  useEffect(() => {
+    for (const it of items) {
+      void ensureAvatarUrl(it.type, it.id);
+    }
+  }, [ensureAvatarUrl, items]);
 
   useEffect(() => {
     const t0 = setTimeout(() => {
@@ -512,6 +560,7 @@ export function ConversationList({
                   <div key={item.id} data-conversation-item="true">
                     <ConversationIconButton
                       item={item}
+                      avatarUrl={avatarUrlMap[`group:${item.id}`]}
                       isSelected={selectedId === item.id && selectedType === "group"}
                       onClick={() => onSelect(item.id, "group", item.name)}
                     />
@@ -529,6 +578,7 @@ export function ConversationList({
                   <div key={item.id} data-conversation-item="true">
                     <ConversationIconButton
                       item={item}
+                      avatarUrl={avatarUrlMap[`agent:${item.id}`]}
                       isSelected={selectedId === item.id && selectedType === "agent"}
                       onClick={() => onSelect(item.id, "agent", item.name)}
                     />
@@ -602,6 +652,7 @@ export function ConversationList({
                   >
                     <ConversationItemCard
                       item={item}
+                      avatarUrl={avatarUrlMap[`group:${item.id}`]}
                       isSelected={selectedId === item.id && selectedType === "group"}
                       bulkMode={bulkMode}
                       checked={selectedKeys.has(conversationKey(item))}
@@ -643,6 +694,7 @@ export function ConversationList({
                   >
                     <ConversationItemCard
                       item={item}
+                      avatarUrl={avatarUrlMap[`agent:${item.id}`]}
                       isSelected={selectedId === item.id && selectedType === "agent"}
                       bulkMode={bulkMode}
                       checked={selectedKeys.has(conversationKey(item))}
@@ -850,10 +902,12 @@ export function ConversationList({
 
 function ConversationIconButton({
   item,
+  avatarUrl,
   isSelected,
   onClick,
 }: {
   item: ConversationItem;
+  avatarUrl?: string;
   isSelected: boolean;
   onClick: () => void;
 }) {
@@ -870,7 +924,11 @@ function ConversationIconButton({
       onClick={onClick}
       title={item.displayName}
     >
-      <span className="text-xl">{emoji}</span>
+      {avatarUrl ? (
+        <img src={avatarUrl} alt="" className="h-7 w-7 rounded-full" />
+      ) : (
+        <span className="text-xl">{emoji}</span>
+      )}
       {item.pendingCount > 0 && (
         <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-sidebar" />
       )}
@@ -880,6 +938,7 @@ function ConversationIconButton({
 
 function ConversationItemCard({
   item,
+  avatarUrl,
   isSelected,
   onClick,
   bulkMode,
@@ -888,6 +947,7 @@ function ConversationItemCard({
   view,
 }: {
   item: ConversationItem;
+  avatarUrl?: string;
   isSelected: boolean;
   onClick: () => void;
   bulkMode?: boolean;
@@ -918,8 +978,12 @@ function ConversationItemCard({
           />
         </span>
       )}
-      <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/55 ring-1 ring-white/40 text-[18px]">
-        {emoji}
+      <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/55 ring-1 ring-white/40 text-[18px] overflow-hidden">
+        {avatarUrl ? (
+          <img src={avatarUrl} alt="" className="h-full w-full" />
+        ) : (
+          emoji
+        )}
         {item.pendingCount > 0 && (
           <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-background" />
         )}

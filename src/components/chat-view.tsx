@@ -25,6 +25,14 @@ import {
   getWaitingDuration,
 } from "@/lib/utils";
 import {
+  getOrInitAvatarSeed,
+  getOrInitGroupAvatarSeed,
+  randomSeed,
+  setAvatarSeed,
+  setGroupAvatarSeed,
+  thumbsAvatarDataUrl,
+} from "@/lib/avatar";
+import {
   fetchAgentTimeline,
   fetchGroupTimeline,
   fetchGroupMembers,
@@ -84,6 +92,15 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionActive, setMentionActive] = useState(0);
   const [mentionAtIndex, setMentionAtIndex] = useState<number | null>(null);
+
+  const [avatarUrlMap, setAvatarUrlMap] = useState<Record<string, string>>({});
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+  const [avatarPickerTarget, setAvatarPickerTarget] = useState<
+    | { kind: "agent"; id: string }
+    | { kind: "group"; id: string }
+    | null
+  >(null);
+  const [avatarCandidates, setAvatarCandidates] = useState<{ seed: string; url: string }[]>([]);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputWrapRef = useRef<HTMLDivElement>(null);
@@ -193,6 +210,41 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
     if (type === "agent") return agentNameMap[id] || id;
     return groupTitle;
   }, [agentNameMap, groupTitle, id, type]);
+
+  const ensureAvatarUrl = useCallback(async (kind: "agent" | "group", rawId: string) => {
+    if (!rawId) return;
+    const key = `${kind}:${rawId}`;
+    setAvatarUrlMap((prev) => {
+      if (prev[key]) return prev;
+      return { ...prev, [key]: "" };
+    });
+
+    try {
+      const seed =
+        kind === "agent" ? getOrInitAvatarSeed(rawId) : getOrInitGroupAvatarSeed(rawId);
+      const url = await thumbsAvatarDataUrl(seed);
+      setAvatarUrlMap((prev) => ({ ...prev, [key]: url }));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const setTargetAvatarSeed = useCallback(
+    async (kind: "agent" | "group", rawId: string, seed: string) => {
+      if (!rawId) return;
+      if (kind === "agent") setAvatarSeed(rawId, seed);
+      else setGroupAvatarSeed(rawId, seed);
+
+      const key = `${kind}:${rawId}`;
+      try {
+        const url = await thumbsAvatarDataUrl(seed);
+        setAvatarUrlMap((prev) => ({ ...prev, [key]: url }));
+      } catch {
+        // ignore
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     if (type !== "group") return;
@@ -374,6 +426,38 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
 
     void loadNames();
   }, [id, members, type]);
+
+  useEffect(() => {
+    if (type === "agent") {
+      void ensureAvatarUrl("agent", id);
+      return;
+    }
+
+    // group header avatar
+    void ensureAvatarUrl("group", id);
+
+    // message bubble avatars
+    for (const mid of members) {
+      void ensureAvatarUrl("agent", mid);
+    }
+  }, [ensureAvatarUrl, id, members, type]);
+
+  const openAvatarPicker = useCallback(
+    async (target: { kind: "agent" | "group"; id: string }) => {
+      setAvatarPickerTarget(target);
+      setAvatarPickerOpen(true);
+      void ensureAvatarUrl(target.kind, target.id);
+
+      try {
+        const seeds = Array.from({ length: 20 }, () => randomSeed());
+        const urls = await Promise.all(seeds.map((s) => thumbsAvatarDataUrl(s)));
+        setAvatarCandidates(seeds.map((seed, i) => ({ seed, url: urls[i] || "" })));
+      } catch {
+        setAvatarCandidates([]);
+      }
+    },
+    [ensureAvatarUrl]
+  );
 
   const closeMention = () => {
     setMentionQuery("");
@@ -1064,9 +1148,35 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
             <ChevronLeft className="h-5 w-5" />
           </Button>
         )}
-        <span className="text-2xl">
-          {type === "group" ? "👥" : getAgentEmoji(id)}
-        </span>
+        {type === "group" ? (
+          <button
+            type="button"
+            className="h-9 w-9 shrink-0 rounded-full bg-muted overflow-hidden"
+            onClick={() => openAvatarPicker({ kind: "group", id })}
+            title="Change avatar"
+          >
+            {avatarUrlMap[`group:${id}`] ? (
+              <img src={avatarUrlMap[`group:${id}`]} alt="" className="h-full w-full" />
+            ) : (
+              <span className="flex h-full w-full items-center justify-center text-lg">👥</span>
+            )}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="h-9 w-9 shrink-0 rounded-full bg-muted overflow-hidden"
+            onClick={() => openAvatarPicker({ kind: "agent", id })}
+            title="Change avatar"
+          >
+            {avatarUrlMap[`agent:${id}`] ? (
+              <img src={avatarUrlMap[`agent:${id}`]} alt="" className="h-full w-full" />
+            ) : (
+              <span className="flex h-full w-full items-center justify-center text-lg">
+                {getAgentEmoji(id)}
+              </span>
+            )}
+          </button>
+        )}
         <div className="flex-1">
           {editingTitle ? (
             <input
@@ -1185,6 +1295,7 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
                     request={item.request}
                     showAgent={type === "group"}
                     agentNameMap={agentNameMap}
+                    avatarUrlMap={avatarUrlMap}
                     showName={!prevSameSender}
                     showAvatar={!prevSameSender}
                     compact={compact}
@@ -1284,6 +1395,74 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
           )}
         </DialogContent>
       </Dialog>
+
+      <Dialog open={avatarPickerOpen} onOpenChange={setAvatarPickerOpen}>
+        <DialogContent className="max-w-lg glass-surface glass-noise">
+          <DialogHeader>
+            <DialogTitle>Avatar</DialogTitle>
+          </DialogHeader>
+          {avatarPickerTarget && (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-3">
+                <div className="h-14 w-14 rounded-full bg-muted overflow-hidden">
+                  {avatarUrlMap[`${avatarPickerTarget.kind}:${avatarPickerTarget.id}`] ? (
+                    <img
+                      src={
+                        avatarUrlMap[`${avatarPickerTarget.kind}:${avatarPickerTarget.id}`]
+                      }
+                      alt=""
+                      className="h-full w-full"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-xl">
+                      {avatarPickerTarget.kind === "group" ? "👥" : getAgentEmoji(id)}
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate">{titleDisplay}</p>
+                  <p className="text-xs text-muted-foreground truncate">Click a thumb to apply</p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    const s = randomSeed();
+                    await setTargetAvatarSeed(avatarPickerTarget.kind, avatarPickerTarget.id, s);
+                    // refresh candidate grid
+                    void openAvatarPicker(avatarPickerTarget);
+                  }}
+                >
+                  Random
+                </Button>
+              </div>
+
+              <div className="max-h-52 overflow-y-auto pr-1">
+                <div className="grid grid-cols-5 gap-2">
+                {avatarCandidates.map((c) => (
+                  <button
+                    key={c.seed}
+                    type="button"
+                    className="h-12 w-12 rounded-full bg-muted overflow-hidden hover:ring-2 hover:ring-ring/40"
+                    onClick={async () => {
+                      await setTargetAvatarSeed(
+                        avatarPickerTarget.kind,
+                        avatarPickerTarget.id,
+                        c.seed
+                      );
+                      setAvatarPickerOpen(false);
+                    }}
+                    title="Apply"
+                  >
+                    {c.url ? <img src={c.url} alt="" className="h-full w-full" /> : null}
+                  </button>
+                ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1292,6 +1471,7 @@ function MessageBubble({
   request,
   showAgent,
   agentNameMap,
+  avatarUrlMap,
   isHistory,
   showName,
   showAvatar,
@@ -1308,6 +1488,7 @@ function MessageBubble({
   request: CueRequest;
   showAgent?: boolean;
   agentNameMap?: Record<string, string>;
+  avatarUrlMap?: Record<string, string>;
   isHistory?: boolean;
   showName?: boolean;
   showAvatar?: boolean;
@@ -1347,6 +1528,7 @@ function MessageBubble({
   const rawId = request.agent_id || "";
   const displayName = (agentNameMap && rawId ? agentNameMap[rawId] || rawId : rawId) || "";
   const cardMaxWidth = (showAvatar ?? true) ? "calc(100% - 3rem)" : "100%";
+  const avatarUrl = rawId && avatarUrlMap ? avatarUrlMap[`agent:${rawId}`] : "";
 
   return (
     <div
@@ -1374,7 +1556,11 @@ function MessageBubble({
             onMentionAgent?.(agentId);
           }}
         >
-          {getAgentEmoji(request.agent_id || "")}
+          {avatarUrl ? (
+            <img src={avatarUrl} alt="" className="h-full w-full rounded-full" />
+          ) : (
+            getAgentEmoji(request.agent_id || "")
+          )}
         </span>
       ) : (
         <span className="h-9 w-9 shrink-0" />

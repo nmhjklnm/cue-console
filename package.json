@@ -1,6 +1,6 @@
 {
   "name": "cue-console",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Cue Hub console launcher (Next.js UI)",
   "license": "Apache-2.0",
   "keywords": ["mcp", "cue", "console", "nextjs"],
@@ -34,6 +34,8 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@dicebear/core": "^9.2.4",
+    "@dicebear/thumbs": "^9.2.4",
     "better-sqlite3": "^12.5.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
