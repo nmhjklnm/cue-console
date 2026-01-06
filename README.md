@@ -1,5 +1,7 @@
 # cue-console
 
+[![Repo: cue-stack](https://img.shields.io/badge/repo-cue--stack-111827)](https://github.com/nmhjklnm/cue-stack)
+
 | Mobile | Desktop |
 | --- | --- |
 | ![Mobile screenshot](./assets/iphone.png) | ![Desktop screenshot](./assets/desktop.png) |
