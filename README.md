@@ -1,6 +1,11 @@
 # cue-console
 
 [![Repo: cue-stack](https://img.shields.io/badge/repo-cue--stack-111827)](https://github.com/nmhjklnm/cue-stack)
+[![Repo: cue-console](https://img.shields.io/badge/repo-cue--console-111827)](https://github.com/nmhjklnm/cue-console)
+[![Repo: cue-mcp](https://img.shields.io/badge/repo-cue--mcp-111827)](https://github.com/nmhjklnm/cue-mcp)
+
+[![npm](https://img.shields.io/npm/v/cue-console?label=cue-console&color=CB3837)](https://www.npmjs.com/package/cue-console)
+[![npm downloads](https://img.shields.io/npm/dw/cue-console?color=CB3837)](https://www.npmjs.com/package/cue-console)
 
 | Mobile | Desktop |
 | --- | --- |
