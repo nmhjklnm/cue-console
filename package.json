@@ -36,6 +36,7 @@
     "@types/node": "^20",
     "@dicebear/core": "^9.2.4",
     "@dicebear/thumbs": "^9.2.4",
+    "@fontsource-variable/source-sans-3": "^5.2.8",
     "better-sqlite3": "^12.5.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

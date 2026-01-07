@@ -1,17 +1,6 @@
 import type { Metadata } from "next";
-import { Recursive, Source_Sans_3 } from "next/font/google";
+import "@fontsource-variable/source-sans-3";
 import "./globals.css";
-
-const geistSans = Source_Sans_3({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
-
-const geistMono = Recursive({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "cue-console",
@@ -26,7 +15,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className="antialiased"
         suppressHydrationWarning
       >
         {children}
