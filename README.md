@@ -7,6 +7,8 @@
 [![npm](https://img.shields.io/npm/v/cue-console?label=cue-console&color=CB3837)](https://www.npmjs.com/package/cue-console)
 [![npm downloads](https://img.shields.io/npm/dw/cue-console?color=CB3837)](https://www.npmjs.com/package/cue-console)
 
+[Contributing](./CONTRIBUTING.md) · [Trademark](./TRADEMARK.md)
+
 | Mobile | Desktop |
 | --- | --- |
 | ![Mobile screenshot](./assets/iphone.png) | ![Desktop screenshot](./assets/desktop.png) |
