@@ -27,7 +27,9 @@ Think of it as an “all-in-one” collaboration console for your agents and CLI
 
 ### Goal
 
-Run the console and pair it with `cuemcp`.
+Run the console and pair it with `cueme` (recommended).
+
+Note: `cuemcp` (MCP mode) can be blocked/flagged by some IDEs, so command mode is currently recommended.
 
 ### Step 1: Install `cue-console`
 
@@ -49,13 +51,25 @@ npx cue-console dev --port 3000
 
 Open `http://localhost:3000`.
 
-### Step 3: Start `cuemcp`
+### Step 3: Install `cueme` (recommended)
+
+```bash
+npm install -g cueme
+```
+
+### Step 4: Configure your system prompt (HAP)
+
+Add the contents of `cue-command/protocol.md` to your tool's system prompt / rules (see [`cue-command`](https://github.com/nmhjklnm/cue-command)).
+
+### Step 5: Connect your runtime
+
+In the agent/runtime you want to use, call `cueme cue` / `cueme pause` (see `cue-command/protocol.md`).
+
+---
+
+### Optional: MCP mode (`cuemcp`)
 
 Add and run the MCP server in your agent/runtime (see [`cue-mcp`](https://github.com/nmhjklnm/cue-mcp) for client-specific MCP configuration).
-
-### Step 4: Connect your runtime
-
-In the agent/runtime you want to use, type `cue` to trigger connect (or reconnect) and route the collaboration flow to `cue-console`.
 
 ---
 
