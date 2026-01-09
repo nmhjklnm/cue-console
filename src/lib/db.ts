@@ -445,6 +445,26 @@ export function getPendingCountByAgent(agentId: string): number {
   return result.count;
 }
 
+function formatLocalIsoWithOffset(d: Date): string {
+  const offset = -d.getTimezoneOffset();
+  const sign = offset >= 0 ? "+" : "-";
+  const pad2 = (n: number) => String(Math.abs(n)).padStart(2, "0");
+  const pad3 = (n: number) => String(Math.abs(n)).padStart(3, "0");
+
+  const year = d.getFullYear();
+  const month = pad2(d.getMonth() + 1);
+  const day = pad2(d.getDate());
+  const hours = pad2(d.getHours());
+  const minutes = pad2(d.getMinutes());
+  const seconds = pad2(d.getSeconds());
+  const ms = pad3(d.getMilliseconds());
+
+  const offsetHours = pad2(Math.floor(Math.abs(offset) / 60));
+  const offsetMinutes = pad2(Math.abs(offset) % 60);
+
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${ms}${sign}${offsetHours}:${offsetMinutes}`;
+}
+
 export function sendResponse(
   requestId: string,
   response: UserResponse,
@@ -452,11 +472,13 @@ export function sendResponse(
 ): void {
   const db = getDb();
 
+  const createdAt = formatLocalIsoWithOffset(new Date());
+
   // Insert response
   db.prepare(
     `INSERT OR IGNORE INTO cue_responses (request_id, response_json, cancelled, created_at) 
-     VALUES (?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now', 'localtime'))`
-  ).run(requestId, JSON.stringify(response), cancelled ? 1 : 0);
+     VALUES (?, ?, ?, ?)`
+  ).run(requestId, JSON.stringify(response), cancelled ? 1 : 0, createdAt);
 
   // Update request status
   db.prepare(

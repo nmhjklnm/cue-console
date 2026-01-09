@@ -1121,8 +1121,10 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
     el.style.overflowY = el.scrollHeight > maxPx ? "auto" : "hidden";
   }, [input]);
 
+  const parseDbTime = (dateStr: string) => new Date((dateStr || "").replace(" ", "T"));
+
   const formatDivider = (dateStr: string) => {
-    const d = new Date(dateStr + "Z");
+    const d = parseDbTime(dateStr);
     return d.toLocaleString("zh-CN", {
       month: "2-digit",
       day: "2-digit",
@@ -1267,8 +1269,8 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
             const prevTime = prev?.time;
             const showDivider = (() => {
               if (!prevTime) return true;
-              const a = new Date(prevTime + "Z").getTime();
-              const b = new Date(curTime + "Z").getTime();
+              const a = parseDbTime(prevTime).getTime();
+              const b = parseDbTime(curTime).getTime();
               return b - a > 5 * 60 * 1000;
             })();
 
