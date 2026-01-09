@@ -147,3 +147,9 @@ pnpm dev
 ```
 
 Open `http://localhost:3000`.
+
+---
+
+## QQ Group
+
+![QQ group QR code](./assets/qq.jpg)
