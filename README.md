@@ -66,7 +66,7 @@ Add the contents of `cue-command/protocol.md` to your tool's system prompt / rul
 
 ### Step 5: Connect your runtime
 
-In the agent/runtime you want to use, call `cueme cue` / `cueme pause` (see `cue-command/protocol.md`).
+In the agent/runtime you want to use, call `cueme cue <agent_id> -` / `cueme pause <agent_id> -` (see `cue-command/protocol.md`).
 
 ---
 
