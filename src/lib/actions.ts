@@ -1,5 +1,9 @@
 "use server";
 
+import { promises as fs } from "fs";
+import os from "os";
+import path from "path";
+
 import {
   getPendingRequests,
   getRequestsByAgent,
@@ -29,6 +33,13 @@ import {
   getGroupPendingCount,
   getGroupPendingRequests,
   getGroupTimeline,
+  enqueueMessageQueue,
+  listMessageQueue,
+  deleteMessageQueueItem,
+  moveMessageQueueItem,
+  acquireWorkerLease,
+  processMessageQueueTick,
+  type ConversationType,
   type CueResponse,
 } from "./db";
 
@@ -37,6 +48,53 @@ import type { ConversationItem, UserResponse } from "./types";
 export type { Group, UserResponse, ImageContent, ConversationItem } from "./types";
 export type { CueRequest, CueResponse, AgentTimelineItem } from "./db";
 import { v4 as uuidv4 } from "uuid";
+
+export type UserConfig = {
+  sound_enabled: boolean;
+};
+
+export type QueuedMessage = {
+  id: string;
+  text: string;
+  images: { mime_type: string; base64_data: string; file_name?: string }[];
+  createdAt: number;
+};
+
+const defaultUserConfig: UserConfig = {
+  sound_enabled: true,
+};
+
+function getUserConfigPath(): string {
+  return path.join(os.homedir(), ".cue", "config.json");
+}
+
+export async function getUserConfig(): Promise<UserConfig> {
+  const p = getUserConfigPath();
+  try {
+    const raw = await fs.readFile(p, "utf8");
+    const parsed = JSON.parse(raw) as Partial<UserConfig>;
+    return {
+      sound_enabled:
+        typeof parsed.sound_enabled === "boolean"
+          ? parsed.sound_enabled
+          : defaultUserConfig.sound_enabled,
+    };
+  } catch {
+    return defaultUserConfig;
+  }
+}
+
+export async function setUserConfig(next: Partial<UserConfig>): Promise<UserConfig> {
+  const prev = await getUserConfig();
+  const merged: UserConfig = {
+    sound_enabled:
+      typeof next.sound_enabled === "boolean" ? next.sound_enabled : prev.sound_enabled,
+  };
+  const p = getUserConfigPath();
+  await fs.mkdir(path.dirname(p), { recursive: true });
+  await fs.writeFile(p, JSON.stringify(merged, null, 2), "utf8");
+  return merged;
+}
 
 export async function fetchAgentDisplayNames(agentIds: string[]) {
   return getAgentDisplayNames(agentIds);
@@ -49,6 +107,39 @@ export async function setAgentDisplayName(agentId: string, displayName: string) 
 
 export async function fetchArchivedConversationCount() {
   return getArchivedConversationCount();
+}
+
+export async function bootstrapConversation(args: {
+  type: ConversationType;
+  id: string;
+  limit?: number;
+}): Promise<{
+  config: UserConfig;
+  members: string[];
+  agentNameMap: Record<string, string>;
+  queue: QueuedMessage[];
+  timeline: Awaited<ReturnType<typeof fetchAgentTimeline>>;
+}> {
+  const type = args.type;
+  const id = args.id;
+  const limit = Math.max(1, Math.min(80, args.limit ?? 30));
+
+  const cfgP = getUserConfig();
+  const memsP = type === "group" ? Promise.resolve(getGroupMembers(id)) : Promise.resolve<string[]>([]);
+  const queueP = Promise.resolve(fetchMessageQueue(type, id));
+  const pageP = type === "agent" ? fetchAgentTimeline(id, null, limit) : fetchGroupTimeline(id, null, limit);
+
+  const [config, members, queue, timeline] = await Promise.all([cfgP, memsP, queueP, pageP]);
+  const ids = type === "group" ? Array.from(new Set([id, ...members])) : [id];
+  const agentNameMap = getAgentDisplayNames(ids);
+
+  return {
+    config,
+    members,
+    agentNameMap,
+    queue,
+    timeline,
+  };
 }
 
 function parseConversationKey(key: string): { type: "agent" | "group"; id: string } | null {
@@ -126,6 +217,77 @@ export async function fetchPendingRequests() {
   return getPendingRequests();
 }
 
+export async function fetchMessageQueue(type: ConversationType, id: string): Promise<QueuedMessage[]> {
+  const rows = listMessageQueue(type, id);
+  const out: QueuedMessage[] = [];
+  for (const r of rows) {
+    try {
+      const parsed = JSON.parse(r.message_json || "{}") as {
+        text?: string;
+        images?: { mime_type: string; base64_data: string; file_name?: string }[];
+        createdAt?: number;
+      };
+      out.push({
+        id: String(r.id),
+        text: typeof parsed.text === "string" ? parsed.text : "",
+        images: Array.isArray(parsed.images) ? parsed.images : [],
+        createdAt: typeof parsed.createdAt === "number" ? parsed.createdAt : Date.now(),
+      });
+    } catch {
+      out.push({ id: r.id, text: "", images: [], createdAt: Date.now() });
+    }
+  }
+  return out;
+}
+
+export async function enqueueMessage(
+  type: ConversationType,
+  id: string,
+  msg: QueuedMessage
+): Promise<{ success: true } | { success: false; error: string }> {
+  try {
+    enqueueMessageQueue(type, id, JSON.stringify(msg));
+    return { success: true } as const;
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : String(e) } as const;
+  }
+}
+
+export async function removeQueuedMessage(queueId: string): Promise<{ success: true } | { success: false; error: string }> {
+  try {
+    deleteMessageQueueItem(queueId);
+    return { success: true } as const;
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : String(e) } as const;
+  }
+}
+
+export async function reorderQueuedMessage(
+  type: ConversationType,
+  id: string,
+  fromIndex: number,
+  toIndex: number
+): Promise<{ success: true } | { success: false; error: string }> {
+  try {
+    moveMessageQueueItem(type, id, fromIndex, toIndex);
+    return { success: true } as const;
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : String(e) } as const;
+  }
+}
+
+export async function processQueueTick(workerId: string) {
+  return processMessageQueueTick(workerId, { limit: 50 });
+}
+
+export async function claimWorkerLease(args: {
+  leaseKey: string;
+  holderId: string;
+  ttlMs: number;
+}) {
+  return acquireWorkerLease(args);
+}
+
 // Responses
 export async function submitResponse(
   requestId: string,
@@ -151,7 +313,7 @@ export async function submitResponse(
 
 export async function cancelRequest(requestId: string) {
   try {
-    const response: UserResponse = { text: "", images: [] };
+    const response: UserResponse = { text: "" };
     sendResponse(requestId, response, true);
     return { success: true } as const;
   } catch (e) {
@@ -286,11 +448,11 @@ export async function fetchConversationList(options?: {
     try {
       const parsed = JSON.parse(r.response_json || "{}") as {
         text?: string;
-        images?: unknown[];
       };
       const text = (parsed.text || "").trim();
       if (text) return `You: ${text}`;
-      if (Array.isArray(parsed.images) && parsed.images.length > 0) return "You: [image]";
+      const filesCount = typeof r.files_count === "number" ? r.files_count : 0;
+      if (filesCount > 0) return "You: [file]";
       return "You: [message]";
     } catch {
       return "You: [message]";

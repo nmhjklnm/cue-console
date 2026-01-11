@@ -42,6 +42,12 @@ import {
   submitResponse,
   cancelRequest,
   batchRespond,
+  bootstrapConversation,
+  fetchMessageQueue,
+  enqueueMessage,
+  removeQueuedMessage,
+  reorderQueuedMessage,
+  getUserConfig,
   type CueRequest,
   type CueResponse,
   type AgentTimelineItem,
@@ -50,6 +56,15 @@ import { ChevronLeft, Github } from "lucide-react";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { PayloadCard } from "@/components/payload-card";
 import { ChatComposer } from "@/components/chat-composer";
+import { Skeleton } from "@/components/ui/skeleton";
+
+function perfEnabled(): boolean {
+  try {
+    return window.localStorage.getItem("cue-console:perf") === "1";
+  } catch {
+    return false;
+  }
+}
 
 type MentionDraft = {
   userId: string;
@@ -79,13 +94,31 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [bootstrapping, setBootstrapping] = useState(false);
   const [images, setImages] = useState<
-    { mime_type: string; base64_data: string }[]
+    { mime_type: string; base64_data: string; file_name?: string }[]
   >([]);
-  const imagesRef = useRef<{ mime_type: string; base64_data: string }[]>([]);
+  const imagesRef = useRef<{ mime_type: string; base64_data: string; file_name?: string }[]>([]);
   const [previewImage, setPreviewImage] = useState<
     { mime_type: string; base64_data: string } | null
   >(null);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+
+  const pendingNonPauseSeenRef = useRef<Set<string>>(new Set());
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  const loadSeqRef = useRef(0);
+
+  useEffect(() => {
+    const onConfigUpdated = (evt: Event) => {
+      const e = evt as CustomEvent<{ sound_enabled?: boolean }>;
+      if (typeof e.detail?.sound_enabled === "boolean") {
+        setSoundEnabled(e.detail.sound_enabled);
+      }
+    };
+    window.addEventListener("cue-console:configUpdated", onConfigUpdated);
+    return () => window.removeEventListener("cue-console:configUpdated", onConfigUpdated);
+  }, []);
 
   const [draftMentions, setDraftMentions] = useState<MentionDraft[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -109,6 +142,8 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const [composerPadPx, setComposerPadPx] = useState(36 * 4);
+
   const [mentionPos, setMentionPos] = useState<{ left: number; top: number } | null>(
     null
   );
@@ -120,6 +155,17 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
 
   const nextCursorRef = useRef<string | null>(null);
   const loadingMoreRef = useRef(false);
+
+  const [queue, setQueue] = useState<
+    { id: string; text: string; images: { mime_type: string; base64_data: string; file_name?: string }[]; createdAt: number }[]
+  >([]);
+
+  const lastQueueFetchRef = useRef<{ key: string; at: number } | null>(null);
+  const lastNamesFetchRef = useRef<{ key: string; at: number } | null>(null);
+
+  const draftStorageKey = useMemo(() => {
+    return `cue-console:draft:${type}:${id}`;
+  }, [type, id]);
 
   const PAGE_SIZE = 30;
 
@@ -135,6 +181,44 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
       reader.readAsDataURL(file);
     });
 
+  const isPauseRequest = useCallback((req: CueRequest) => {
+    if (!req.payload) return false;
+    try {
+      const obj = JSON.parse(req.payload) as Record<string, unknown>;
+      return obj?.type === "confirm" && obj?.variant === "pause";
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const playDing = useCallback(async () => {
+    try {
+      const Ctx = globalThis.AudioContext || (globalThis as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = audioCtxRef.current || new Ctx();
+      audioCtxRef.current = ctx;
+      if (ctx.state === "suspended") {
+        await ctx.resume();
+      }
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = 880;
+
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.16);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.18);
+    } catch {
+      // ignore (autoplay policy, etc.)
+    }
+  }, []);
+
   const fileToImage = (file: File) =>
     new Promise<HTMLImageElement>((resolve, reject) => {
       const url = URL.createObjectURL(file);
@@ -143,12 +227,77 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
         URL.revokeObjectURL(url);
         resolve(img);
       };
+
       img.onerror = () => {
         URL.revokeObjectURL(url);
         reject(new Error("image load failed"));
       };
       img.src = url;
     });
+
+  const enqueueCurrent = () => {
+    const currentImages = imagesRef.current;
+    if (!input.trim() && currentImages.length === 0) {
+      setNotice("Enter a message to queue, or select a file.");
+      return;
+    }
+    const qid =
+      (globalThis.crypto && "randomUUID" in globalThis.crypto
+        ? (globalThis.crypto as Crypto).randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    const item = {
+      id: qid,
+      text: input,
+      images: currentImages,
+      createdAt: Date.now(),
+    };
+    void (async () => {
+      const res = await enqueueMessage(type, id, item);
+      if (!res.success) {
+        setError(res.error || "Queue failed");
+        return;
+      }
+      setInput("");
+      setImages([]);
+      setDraftMentions([]);
+      await refreshQueue();
+    })();
+  };
+
+  const removeQueued = (qid: string) => {
+    void (async () => {
+      const res = await removeQueuedMessage(qid);
+      if (!res.success) {
+        setError(res.error || "Remove failed");
+        return;
+      }
+      await refreshQueue();
+    })();
+  };
+
+  const recallQueued = (qid: string) => {
+    const item = queue.find((x) => x.id === qid);
+    if (!item) return;
+    setInput(item.text);
+    setImages(item.images);
+    setDraftMentions([]);
+    void (async () => {
+      await removeQueuedMessage(qid);
+      await refreshQueue();
+    })();
+  };
+
+  const reorderQueue = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    void (async () => {
+      const res = await reorderQueuedMessage(type, id, fromIndex, toIndex);
+      if (!res.success) {
+        setError(res.error || "Reorder failed");
+        return;
+      }
+      await refreshQueue();
+    })();
+  };
 
   const maybeCompressImageFile = async (file: File) => {
     const inputType = (file.type || "").trim();
@@ -202,9 +351,201 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
     return { mime_type: finalMime, base64_data: base64 };
   };
 
+  const fileToInlineAttachment = async (file: File) => {
+    const mime = (file.type || "").trim();
+    if (mime.startsWith("image/")) {
+      const img = await fileToInlineImage(file);
+      return { ...img, file_name: file.name || undefined };
+    }
+    const dataUrl = await readAsDataUrl(file);
+    const comma = dataUrl.indexOf(",");
+    if (comma < 0) throw new Error("invalid data url");
+    const header = dataUrl.slice(0, comma);
+    const base64 = dataUrl.slice(comma + 1);
+    const m = /data:([^;]+);base64/i.exec(header);
+    const finalMime = (m?.[1] || mime || "application/octet-stream").trim();
+    if (!base64 || base64.length < 16) throw new Error("empty base64");
+    return { mime_type: finalMime, base64_data: base64, file_name: file.name || undefined };
+  };
+
   useEffect(() => {
     imagesRef.current = images;
   }, [images]);
+
+  const addAttachmentsFromFiles = useCallback(
+    async (files: File[], sourceLabel: string) => {
+      if (!files || files.length === 0) return;
+
+      try {
+        const failures: string[] = [];
+        const converted = await Promise.all(
+          files.map(async (file) => {
+            try {
+              return await fileToInlineAttachment(file);
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              failures.push(msg || "unknown error");
+              return null;
+            }
+          })
+        );
+        const next = converted.filter(Boolean) as {
+          mime_type: string;
+          base64_data: string;
+          file_name?: string;
+        }[];
+        if (next.length > 0) {
+          setImages((prev) => [...prev, ...next]);
+          if (failures.length > 0) {
+            setNotice(
+              `Added ${next.length} file(s) from ${sourceLabel}; failed ${failures.length}: ${failures[0]}`
+            );
+          } else {
+            setNotice(`Added ${next.length} file(s) from ${sourceLabel}`);
+          }
+        } else {
+          setNotice(`Selected files but failed to parse: ${failures[0] || "unknown error"}`);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setNotice(msg || "Failed to add files");
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    const el = inputWrapRef.current;
+    if (!el) return;
+
+    const onDragOver = (e: DragEvent) => {
+      e.preventDefault();
+    };
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault();
+      const dt = e.dataTransfer;
+      if (!dt) return;
+      const list = Array.from(dt.files || []);
+      if (list.length === 0) return;
+      void addAttachmentsFromFiles(list, "drop");
+    };
+
+    el.addEventListener("dragover", onDragOver);
+    el.addEventListener("drop", onDrop);
+    return () => {
+      el.removeEventListener("dragover", onDragOver);
+      el.removeEventListener("drop", onDrop);
+    };
+  }, [addAttachmentsFromFiles]);
+
+  const refreshQueue = useCallback(async () => {
+    try {
+      const key = `${type}:${id}`;
+      const now = Date.now();
+      const last = lastQueueFetchRef.current;
+      if (last && last.key === key && now - last.at < 500) return;
+      lastQueueFetchRef.current = { key, at: now };
+
+      const t0 = perfEnabled() ? performance.now() : 0;
+      const rows = await fetchMessageQueue(type, id);
+      setQueue(rows);
+      if (t0) {
+        const t1 = performance.now();
+        // eslint-disable-next-line no-console
+        console.log(`[perf] fetchMessageQueue type=${type} id=${id} n=${rows.length} ${(t1 - t0).toFixed(1)}ms`);
+      }
+    } catch {
+      // ignore
+    }
+  }, [type, id]);
+
+  useEffect(() => {
+    const legacyKey = `cue-console:queue:${type}:${id}`;
+    let legacyRaw: string | null = null;
+    try {
+      legacyRaw = localStorage.getItem(legacyKey);
+    } catch {
+      legacyRaw = null;
+    }
+    if (!legacyRaw) return;
+
+    void (async () => {
+      try {
+        const parsed = JSON.parse(legacyRaw || "[]") as unknown;
+        if (!Array.isArray(parsed) || parsed.length === 0) return;
+        for (const x of parsed) {
+          const obj = x as Partial<{
+            id: string;
+            text: string;
+            images: { mime_type: string; base64_data: string; file_name?: string }[];
+            createdAt: number;
+          }>;
+          const qid =
+            typeof obj.id === "string" && obj.id
+              ? obj.id
+              : (globalThis.crypto && "randomUUID" in globalThis.crypto
+                  ? (globalThis.crypto as Crypto).randomUUID()
+                  : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+          const msg = {
+            id: qid,
+            text: typeof obj.text === "string" ? obj.text : "",
+            images: Array.isArray(obj.images) ? obj.images : [],
+            createdAt: typeof obj.createdAt === "number" ? obj.createdAt : Date.now(),
+          };
+          if (!msg.text.trim() && msg.images.length === 0) continue;
+          await enqueueMessage(type, id, msg);
+        }
+        try {
+          localStorage.removeItem(legacyKey);
+        } catch {
+          // ignore
+        }
+      } finally {
+        await refreshQueue();
+      }
+    })();
+  }, [type, id, refreshQueue]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(draftStorageKey);
+      if (!raw) {
+        return;
+      }
+      const parsed = JSON.parse(raw) as unknown;
+      const obj = parsed as Partial<{
+        input: string;
+        images: { mime_type: string; base64_data: string }[];
+        draftMentions: MentionDraft[];
+      }>;
+      if (typeof obj.input === "string") {
+        setInput(obj.input);
+      }
+      if (Array.isArray(obj.images)) {
+        setImages(obj.images);
+        imagesRef.current = obj.images;
+      }
+      if (Array.isArray(obj.draftMentions)) {
+        setDraftMentions(obj.draftMentions);
+      }
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftStorageKey]);
+
+  useEffect(() => {
+    try {
+      const draft = {
+        input,
+        images,
+        draftMentions,
+      };
+      localStorage.setItem(draftStorageKey, JSON.stringify(draft));
+    } catch {
+      // ignore
+    }
+  }, [input, images, draftMentions, draftStorageKey]);
 
   const titleDisplay = useMemo(() => {
     if (type === "agent") return agentNameMap[id] || id;
@@ -262,76 +603,23 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
       const cd = e.clipboardData;
       if (!cd) return;
 
-      const imageFilesFromItems: File[] = [];
+      const filesFromItems: File[] = [];
       for (const it of Array.from(cd.items || [])) {
         if (it.kind !== "file") continue;
         const f = it.getAsFile();
         if (!f) continue;
-        const itemType = (it.type || "").trim();
-        const fileType = (f.type || "").trim();
-        const isImage =
-          (itemType && itemType.startsWith("image/")) ||
-          (fileType && fileType.startsWith("image/"));
-        if (isImage) imageFilesFromItems.push(f);
+        filesFromItems.push(f);
       }
 
-      // Prefer items over files. Some environments expose the same image in both,
-      // and the metadata differs enough that naive dedupe fails.
-      const imageFiles: File[] =
-        imageFilesFromItems.length > 0
-          ? imageFilesFromItems
-          : Array.from(cd.files || []).filter((f) => (f?.type || "").startsWith("image/"));
+      // Prefer items over files.
+      const files: File[] = filesFromItems.length > 0 ? filesFromItems : Array.from(cd.files || []);
+      if (files.length === 0) return;
 
-      if (imageFiles.length === 0) {
-        setNotice("No pasteable images detected (make sure your clipboard contains an image)");
-        return;
-      }
-
-      // If images are present, treat this paste as an image attach.
-      // Prevent unexpected text insertion (some browsers may paste placeholder text).
+      // Prevent placeholder text insertion.
       e.preventDefault();
-
-      try {
-        const nextImages: { mime_type: string; base64_data: string }[] = [];
-        const failures: string[] = [];
-        const seen = new Set<string>();
-
-        const fingerprint = (img: { mime_type: string; base64_data: string }) => {
-          const head = img.base64_data.slice(0, 64);
-          return `${img.mime_type}|${img.base64_data.length}|${head}`;
-        };
-
-        for (const f of imageFiles) {
-          try {
-            const img = await fileToInlineImage(f);
-            const key = fingerprint(img);
-            if (seen.has(key)) continue;
-            seen.add(key);
-            nextImages.push(img);
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            failures.push(msg || "unknown error");
-          }
-        }
-
-        if (nextImages.length > 0) {
-          setImages((prev) => [...prev, ...nextImages]);
-          if (failures.length > 0) {
-            setNotice(
-              `Added ${nextImages.length} image(s) from paste; failed ${failures.length}: ${failures[0]}`
-            );
-          } else {
-            setNotice(`Added ${nextImages.length} image(s) from paste`);
-          }
-        } else {
-          setNotice(`Detected images but failed to parse: ${failures[0] || "unknown error"}`);
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        setNotice(`Failed to read clipboard image: ${msg || "unknown error"}`);
-      }
+      void addAttachmentsFromFiles(files, "paste");
     },
-    [fileToInlineImage]
+    [addAttachmentsFromFiles]
   );
 
   const beginEditTitle = () => {
@@ -413,33 +701,47 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
 
   const mentionScrollable = mentionCandidates.length > 5;
 
-  useEffect(() => {
-    const loadNames = async () => {
-      try {
-        const ids = type === "group" ? Array.from(new Set([id, ...members])) : [id];
-        const map = await fetchAgentDisplayNames(ids);
-        setAgentNameMap(map);
-      } catch {
-        // ignore
-      }
-    };
-
-    void loadNames();
-  }, [id, members, type]);
+  // NOTE: agentNameMap is loaded via bootstrapConversation on switch.
 
   useEffect(() => {
     if (type === "agent") {
-      void ensureAvatarUrl("agent", id);
+      void (async () => {
+        const t0 = perfEnabled() ? performance.now() : 0;
+        await ensureAvatarUrl("agent", id);
+        if (t0) {
+          const t1 = performance.now();
+          // eslint-disable-next-line no-console
+          console.log(`[perf] ensureAvatarUrl(agent) id=${id} ${(t1 - t0).toFixed(1)}ms`);
+        }
+      })();
       return;
     }
 
     // group header avatar
-    void ensureAvatarUrl("group", id);
+    void (async () => {
+      const t0 = perfEnabled() ? performance.now() : 0;
+      await ensureAvatarUrl("group", id);
+      if (t0) {
+        const t1 = performance.now();
+        // eslint-disable-next-line no-console
+        console.log(`[perf] ensureAvatarUrl(group) id=${id} ${(t1 - t0).toFixed(1)}ms`);
+      }
+    })();
 
-    // message bubble avatars
-    for (const mid of members) {
-      void ensureAvatarUrl("agent", mid);
-    }
+    // message bubble avatars (avoid serial await; process in small batches)
+    void (async () => {
+      const t0 = perfEnabled() ? performance.now() : 0;
+      const batchSize = 4;
+      for (let i = 0; i < members.length; i += batchSize) {
+        const batch = members.slice(i, i + batchSize);
+        await Promise.all(batch.map((mid) => ensureAvatarUrl("agent", mid)));
+      }
+      if (t0) {
+        const t1 = performance.now();
+        // eslint-disable-next-line no-console
+        console.log(`[perf] ensureAvatarUrl(group members) group=${id} n=${members.length} ${(t1 - t0).toFixed(1)}ms`);
+      }
+    })();
   }, [ensureAvatarUrl, id, members, type]);
 
   const openAvatarPicker = useCallback(
@@ -808,17 +1110,51 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
   };
 
   const loadInitial = async () => {
+    const seq = ++loadSeqRef.current;
+    const t0 = perfEnabled() ? performance.now() : 0;
+    setBootstrapping(true);
     try {
-      if (type === "group") {
-        const mems = await fetchGroupMembers(id);
-        setMembers(mems);
-      }
-      const { items, nextCursor: cursor } = await fetchPage(null, PAGE_SIZE);
+      const res = await bootstrapConversation({ type, id, limit: PAGE_SIZE });
+
+      if (seq !== loadSeqRef.current) return;
+
+      setSoundEnabled(Boolean(res.config.sound_enabled));
+      setMembers(res.members);
+      setAgentNameMap(res.agentNameMap);
+      setQueue(res.queue);
+
+      const { items, nextCursor: cursor } = res.timeline;
       const asc = [...items].reverse();
-      setTimeline(asc);
+
+      // Deduplicate by key to avoid duplicate React keys / duplicated items.
+      const map = new Map<string, AgentTimelineItem>();
+      for (const it of asc) map.set(keyForItem(it), it);
+      const uniqueAsc = Array.from(map.values());
+
+      // seed "seen" set so initial render doesn't ding
+      const seed = new Set<string>();
+      for (const it of uniqueAsc) {
+        if (it.item_type !== "request") continue;
+        if (it.request.status !== "PENDING") continue;
+        if (isPauseRequest(it.request)) continue;
+        seed.add(it.request.request_id);
+      }
+      pendingNonPauseSeenRef.current = seed;
+
+      setTimeline(uniqueAsc);
       setNextCursor(cursor);
+
+      if (t0) {
+        const t1 = performance.now();
+        // eslint-disable-next-line no-console
+        console.log(`[perf] bootstrapConversation type=${type} id=${id} items=${asc.length} queue=${res.queue.length} ${(t1 - t0).toFixed(1)}ms`);
+      }
     } catch (e) {
+      if (seq !== loadSeqRef.current) return;
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (seq !== loadSeqRef.current) return;
+      setBootstrapping(false);
     }
   };
 
@@ -826,11 +1162,35 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
     try {
       const { items } = await fetchPage(null, PAGE_SIZE);
       const asc = [...items].reverse();
+
+      if (document.visibilityState === "visible" && soundEnabled) {
+        const seen = pendingNonPauseSeenRef.current;
+        let shouldDing = false;
+        for (const it of asc) {
+          if (it.item_type !== "request") continue;
+          if (it.request.status !== "PENDING") continue;
+          if (isPauseRequest(it.request)) continue;
+          const rid = it.request.request_id;
+          if (!seen.has(rid)) {
+            seen.add(rid);
+            shouldDing = true;
+          }
+        }
+        if (shouldDing) {
+          void playDing();
+        }
+      }
+
       setTimeline((prev) => {
         const map = new Map<string, AgentTimelineItem>();
         for (const it of prev) map.set(keyForItem(it), it);
         for (const it of asc) map.set(keyForItem(it), it);
-        return Array.from(map.values()).sort((a, b) => a.time.localeCompare(b.time));
+        const toTs = (t: string) => {
+          const d = new Date((t || "").replace(" ", "T"));
+          const n = d.getTime();
+          return Number.isFinite(n) ? n : 0;
+        };
+        return Array.from(map.values()).sort((a, b) => toTs(a.time) - toTs(b.time));
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -838,7 +1198,54 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
   };
 
   useEffect(() => {
-    loadInitial();
+    const onQueueUpdated = (evt: Event) => {
+      if (document.visibilityState !== "visible") return;
+
+      const e = evt as CustomEvent<{ removedQueueIds?: string[] }>;
+      const removed = Array.isArray(e.detail?.removedQueueIds) ? e.detail.removedQueueIds : [];
+      if (removed.length > 0) {
+        const s = new Set(removed);
+        setQueue((prev) => prev.filter((x) => !s.has(x.id)));
+      }
+      void refreshQueue();
+    };
+    window.addEventListener("cue-console:queueUpdated", onQueueUpdated);
+    return () => window.removeEventListener("cue-console:queueUpdated", onQueueUpdated);
+  }, [refreshQueue]);
+
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      void refreshQueue();
+    };
+
+    const interval = setInterval(tick, 10_000);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      clearInterval(interval);
+    };
+  }, [refreshQueue]);
+
+  useEffect(() => {
+    setBusy(false);
+    setError(null);
+    setNotice(null);
+    setInput("");
+    setImages([]);
+    imagesRef.current = [];
+    setDraftMentions([]);
+
+    setTimeline([]);
+    setNextCursor(null);
+    loadSeqRef.current++;
+    void loadInitial();
 
     const tick = () => {
       if (document.visibilityState !== "visible") return;
@@ -906,7 +1313,12 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
         const merged = [...asc, ...prev];
         const map = new Map<string, AgentTimelineItem>();
         for (const it of merged) map.set(keyForItem(it), it);
-        return Array.from(map.values()).sort((a, b) => a.time.localeCompare(b.time));
+        const toTs = (t: string) => {
+          const d = new Date((t || "").replace(" ", "T"));
+          const n = d.getTime();
+          return Number.isFinite(n) ? n : 0;
+        };
+        return Array.from(map.values()).sort((a, b) => toTs(a.time) - toTs(b.time));
       });
       setNextCursor(cursor);
       requestAnimationFrame(() => {
@@ -1064,35 +1476,13 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
     setBusy(false);
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
 
     try {
       const list = Array.from(files);
-      const failures: string[] = [];
-      const converted = await Promise.all(
-        list.map(async (file) => {
-          try {
-            return await fileToInlineImage(file);
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            failures.push(msg || "unknown error");
-            return null;
-          }
-        })
-      );
-      const next = converted.filter(Boolean) as { mime_type: string; base64_data: string }[];
-      if (next.length > 0) {
-        setImages((prev) => [...prev, ...next]);
-        if (failures.length > 0) {
-          setNotice(`Added ${next.length} image(s); failed ${failures.length}: ${failures[0]}`);
-        } else {
-          setNotice(`Added ${next.length} image(s)`);
-        }
-      } else {
-        setNotice(`Selected images but failed to parse: ${failures[0] || "unknown error"}`);
-      }
+      await addAttachmentsFromFiles(list, "upload");
     } finally {
       // allow selecting the same file again
       e.target.value = "";
@@ -1104,6 +1494,8 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
     !busy &&
     hasPendingRequests &&
     (input.trim().length > 0 || images.length > 0);
+
+  // Queue auto-consumption is handled by the global worker.
 
   useEffect(() => {
     if (!notice) return;
@@ -1120,6 +1512,24 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
     el.style.height = Math.min(el.scrollHeight, maxPx) + "px";
     el.style.overflowY = el.scrollHeight > maxPx ? "auto" : "hidden";
   }, [input]);
+
+  useEffect(() => {
+    const el = inputWrapRef.current;
+    if (!el) return;
+
+    const update = () => {
+      const rect = el.getBoundingClientRect();
+      const bottomOffsetPx = 20; // matches ChatComposer: bottom-5
+      const extraPx = 12;
+      const next = Math.max(0, Math.ceil(rect.height + bottomOffsetPx + extraPx));
+      setComposerPadPx(next);
+    };
+
+    update();
+    const ro = new ResizeObserver(() => update());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const parseDbTime = (dateStr: string) => new Date((dateStr || "").replace(" ", "T"));
 
@@ -1144,94 +1554,101 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
         </div>
       )}
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-border/60 px-4 py-3 glass-surface-soft glass-noise">
-        {onBack && (
-          <Button variant="ghost" size="icon" onClick={onBack}>
-            <ChevronLeft className="h-5 w-5" />
-          </Button>
-        )}
-        {type === "group" ? (
-          <button
-            type="button"
-            className="h-9 w-9 shrink-0 rounded-full bg-muted overflow-hidden"
-            onClick={() => openAvatarPicker({ kind: "group", id })}
-            title="Change avatar"
-          >
-            {avatarUrlMap[`group:${id}`] ? (
-              <img src={avatarUrlMap[`group:${id}`]} alt="" className="h-full w-full" />
+      <div className={cn("px-4 pt-4")}> 
+        <div className={cn(
+          "mx-auto flex w-full max-w-230 items-center gap-2 rounded-3xl p-3",
+          "glass-surface glass-noise"
+        )}>
+          {onBack && (
+            <Button variant="ghost" size="icon" onClick={onBack}>
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+          )}
+          {type === "group" ? (
+            <button
+              type="button"
+              className="h-9 w-9 shrink-0 rounded-full bg-muted overflow-hidden"
+              onClick={() => openAvatarPicker({ kind: "group", id })}
+              title="Change avatar"
+            >
+              {avatarUrlMap[`group:${id}`] ? (
+                <img src={avatarUrlMap[`group:${id}`]} alt="" className="h-full w-full" />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center text-lg">👥</span>
+              )}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="h-9 w-9 shrink-0 rounded-full bg-muted overflow-hidden"
+              onClick={() => openAvatarPicker({ kind: "agent", id })}
+              title="Change avatar"
+            >
+              {avatarUrlMap[`agent:${id}`] ? (
+                <img src={avatarUrlMap[`agent:${id}`]} alt="" className="h-full w-full" />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center text-lg">
+                  {getAgentEmoji(id)}
+                </span>
+              )}
+            </button>
+          )}
+          <div className="flex-1 min-w-0">
+            {editingTitle ? (
+              <input
+                id="chat-title-input"
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void commitEditTitle();
+                  }
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setEditingTitle(false);
+                  }
+                }}
+                onBlur={() => {
+                  void commitEditTitle();
+                }}
+                className="w-60 max-w-full rounded-xl border border-white/45 bg-white/55 px-2.5 py-1.5 text-sm font-semibold outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+              />
             ) : (
-              <span className="flex h-full w-full items-center justify-center text-lg">👥</span>
+              <h2
+                className={cn("font-semibold", "cursor-text", "truncate")}
+                onDoubleClick={beginEditTitle}
+                title="Double-click to rename"
+              >
+                {titleDisplay}
+              </h2>
             )}
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="h-9 w-9 shrink-0 rounded-full bg-muted overflow-hidden"
-            onClick={() => openAvatarPicker({ kind: "agent", id })}
-            title="Change avatar"
-          >
-            {avatarUrlMap[`agent:${id}`] ? (
-              <img src={avatarUrlMap[`agent:${id}`]} alt="" className="h-full w-full" />
-            ) : (
-              <span className="flex h-full w-full items-center justify-center text-lg">
-                {getAgentEmoji(id)}
+            {type === "group" && members.length > 0 && (
+              <p className="text-xs text-muted-foreground truncate">
+                {members.length} member{members.length === 1 ? "" : "s"}
+              </p>
+            )}
+          </div>
+            <Button variant="ghost" size="icon" asChild>
+              <a
+                href="https://github.com/nmhjklnm/cue-console"
+                target="_blank"
+                rel="noreferrer"
+                title="https://github.com/nmhjklnm/cue-console"
+              >
+                <Github className="h-5 w-5" />
+              </a>
+            </Button>
+            {type === "group" && (
+              <span
+                className="hidden sm:inline text-[11px] text-muted-foreground select-none mr-1"
+                title="Type @ to mention members"
+              >
+                @ mention
               </span>
             )}
-          </button>
-        )}
-        <div className="flex-1">
-          {editingTitle ? (
-            <input
-              id="chat-title-input"
-              value={titleDraft}
-              onChange={(e) => setTitleDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void commitEditTitle();
-                }
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  setEditingTitle(false);
-                }
-              }}
-              onBlur={() => {
-                void commitEditTitle();
-              }}
-              className="w-60 max-w-full rounded-xl border border-white/45 bg-white/55 px-2.5 py-1.5 text-sm font-semibold outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]"
-            />
-          ) : (
-            <h2
-              className={cn("font-semibold", "cursor-text")}
-              onDoubleClick={beginEditTitle}
-              title="Double-click to rename"
-            >
-              {titleDisplay}
-            </h2>
-          )}
-          {type === "group" && members.length > 0 && (
-            <p className="text-xs text-muted-foreground">
-              {members.length} member{members.length === 1 ? "" : "s"}
-            </p>
-          )}
+          </div>
         </div>
-        <Button variant="ghost" size="icon" asChild>
-          <a
-            href="https://github.com/nmhjklnm/cue-console"
-            target="_blank"
-            rel="noreferrer"
-            title="https://github.com/nmhjklnm/cue-console"
-          >
-            <Github className="h-5 w-5" />
-          </a>
-        </Button>
-        {type === "group" && (
-          <span className="hidden sm:inline text-[11px] text-muted-foreground select-none mr-1" title="Type @ to mention members">
-            @ mention
-          </span>
-        )}
-      </div>
-
       {/* Messages */}
       <ScrollArea
         className={cn(
@@ -1240,100 +1657,133 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
         )}
         ref={scrollRef}
       >
-        <div className="mx-auto flex w-full max-w-230 flex-col gap-6 pb-36 overflow-x-hidden">
-          {loadingMore && (
-            <div className="flex justify-center py-1">
-              <span className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground shadow-sm">
-                Loading...
-              </span>
-            </div>
-          )}
-          {nextCursor && (
-            <div className="flex justify-center">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={loadMore}
-                disabled={loadingMore}
-              >
-                {loadingMore ? "Loading..." : "Load more"}
-              </Button>
-            </div>
-          )}
-
-          {/* Timeline: all messages sorted by time (paged) */}
-          {timeline.map((item, idx) => {
-            const prev = idx > 0 ? timeline[idx - 1] : null;
-
-            const curTime = item.time;
-            const prevTime = prev?.time;
-            const showDivider = (() => {
-              if (!prevTime) return true;
-              const a = parseDbTime(prevTime).getTime();
-              const b = parseDbTime(curTime).getTime();
-              return b - a > 5 * 60 * 1000;
-            })();
-
-            const divider = showDivider ? (
-              <div key={`div-${curTime}-${idx}`} className="flex justify-center py-1">
-                <span className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground shadow-sm">
-                  {formatDivider(curTime)}
-                </span>
+        <div
+          className="mx-auto flex w-full max-w-230 flex-col gap-6 overflow-x-hidden"
+          style={{ paddingBottom: composerPadPx }}
+        >
+          {bootstrapping ? (
+            <div className="flex flex-col gap-4">
+              <div className="flex justify-center py-1">
+                <Skeleton className="h-5 w-32 rounded-full" />
               </div>
-            ) : null;
-
-            if (item.item_type === "request") {
-              const prevSameSender =
-                prev?.item_type === "request" &&
-                prev.request.agent_id === item.request.agent_id;
-
-              const prevWasRequest = prev?.item_type === "request";
-              const compact = prevWasRequest && prevSameSender;
-
-              return (
-                <div key={`wrap-req-${item.request.request_id}`} className={cn(compact ? "-mt-1" : "")}> 
-                  {divider}
-                  <MessageBubble
-                    request={item.request}
-                    showAgent={type === "group"}
-                    agentNameMap={agentNameMap}
-                    avatarUrlMap={avatarUrlMap}
-                    showName={!prevSameSender}
-                    showAvatar={!prevSameSender}
-                    compact={compact}
-                    disabled={busy}
-                    currentInput={input}
-                    isGroup={type === "group"}
-                    onPasteChoice={pasteToInput}
-                    onSubmitConfirm={handleSubmitConfirm}
-                    onMentionAgent={(agentId) => insertMentionAtCursor(agentId, agentId)}
-                    onReply={() => handleReply(item.request.request_id)}
-                    onCancel={() => handleCancel(item.request.request_id)}
-                  />
+              <div className="flex gap-2">
+                <Skeleton className="h-9 w-9 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-20 w-full" />
                 </div>
-              );
-            }
-
-            const prevIsResp = prev?.item_type === "response";
-            const compactResp = prevIsResp;
-
-            return (
-              <div key={`wrap-resp-${item.response.id}`} className={cn(compactResp ? "-mt-1" : "")}> 
-                {divider}
-                <UserResponseBubble
-                  response={item.response}
-                  showAvatar={!compactResp}
-                  compact={compactResp}
-                  onPreview={setPreviewImage}
-                />
               </div>
-            );
-          })}
-
-          {timeline.length === 0 && (
-            <div className="flex h-40 items-center justify-center text-muted-foreground">
-              No messages yet
+              <div className="flex justify-end">
+                <div className="w-[78%] space-y-2">
+                  <Skeleton className="h-4 w-24 ml-auto" />
+                  <Skeleton className="h-16 w-full ml-auto" />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Skeleton className="h-9 w-9 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-14 w-full" />
+                </div>
+              </div>
             </div>
+          ) : (
+            <>
+              {loadingMore && (
+                <div className="flex justify-center py-1">
+                  <span className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground shadow-sm">
+                    Loading...
+                  </span>
+                </div>
+              )}
+              {nextCursor && (
+                <div className="flex justify-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={loadMore}
+                    disabled={loadingMore}
+                  >
+                    {loadingMore ? "Loading..." : "Load more"}
+                  </Button>
+                </div>
+              )}
+
+              {/* Timeline: all messages sorted by time (paged) */}
+              {timeline.map((item, idx) => {
+                const prev = idx > 0 ? timeline[idx - 1] : null;
+
+                const curTime = item.time;
+                const prevTime = prev?.time;
+                const showDivider = (() => {
+                  if (!prevTime) return true;
+                  const a = parseDbTime(prevTime).getTime();
+                  const b = parseDbTime(curTime).getTime();
+                  return b - a > 5 * 60 * 1000;
+                })();
+
+                const divider = showDivider ? (
+                  <div key={`div-${curTime}-${idx}`} className="flex justify-center py-1">
+                    <span className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground shadow-sm">
+                      {formatDivider(curTime)}
+                    </span>
+                  </div>
+                ) : null;
+
+                if (item.item_type === "request") {
+                  const prevSameSender =
+                    prev?.item_type === "request" &&
+                    prev.request.agent_id === item.request.agent_id;
+
+                  const prevWasRequest = prev?.item_type === "request";
+                  const compact = prevWasRequest && prevSameSender;
+
+                  return (
+                    <div key={`wrap-req-${item.request.request_id}`} className={cn(compact ? "-mt-1" : "")}> 
+                      {divider}
+                      <MessageBubble
+                        request={item.request}
+                        showAgent={type === "group"}
+                        agentNameMap={agentNameMap}
+                        avatarUrlMap={avatarUrlMap}
+                        showName={!prevSameSender}
+                        showAvatar={!prevSameSender}
+                        compact={compact}
+                        disabled={busy}
+                        currentInput={input}
+                        isGroup={type === "group"}
+                        onPasteChoice={pasteToInput}
+                        onSubmitConfirm={handleSubmitConfirm}
+                        onMentionAgent={(agentId) => insertMentionAtCursor(agentId, agentId)}
+                        onReply={() => handleReply(item.request.request_id)}
+                        onCancel={() => handleCancel(item.request.request_id)}
+                      />
+                    </div>
+                  );
+                }
+
+                const prevIsResp = prev?.item_type === "response";
+                const compactResp = prevIsResp;
+
+                return (
+                  <div key={`wrap-resp-${item.response.id}`} className={cn(compactResp ? "-mt-1" : "")}> 
+                    {divider}
+                    <UserResponseBubble
+                      response={item.response}
+                      showAvatar={!compactResp}
+                      compact={compactResp}
+                      onPreview={setPreviewImage}
+                    />
+                  </div>
+                );
+              })}
+
+              {timeline.length === 0 && (
+                <div className="flex h-40 items-center justify-center text-muted-foreground">
+                  No messages yet
+                </div>
+              )}
+            </>
           )}
         </div>
       </ScrollArea>
@@ -1357,8 +1807,13 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
         setNotice={setNotice}
         setPreviewImage={setPreviewImage}
         handleSend={handleSend}
+        enqueueCurrent={enqueueCurrent}
+        queue={queue}
+        removeQueued={removeQueued}
+        recallQueued={recallQueued}
+        reorderQueue={reorderQueue}
         handlePaste={handlePaste}
-        handleImageUpload={handleImageUpload}
+        handleImageUpload={handleFileUpload}
         textareaRef={textareaRef}
         fileInputRef={fileInputRef}
         inputWrapRef={inputWrapRef}
@@ -1386,15 +1841,17 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
           <DialogHeader>
             <DialogTitle>Preview</DialogTitle>
           </DialogHeader>
-          {previewImage && (
+          {previewImage ? (
             <div className="flex items-center justify-center">
-              <img
-                src={`data:${previewImage.mime_type};base64,${previewImage.base64_data}`}
-                alt=""
-                className="max-h-[70vh] rounded-lg"
-              />
+              {((img) => (
+                <img
+                  src={`data:${img.mime_type};base64,${img.base64_data}`}
+                  alt=""
+                  className="max-h-[70vh] rounded-lg"
+                />
+              ))(previewImage!)}
             </div>
-          )}
+          ) : null}
         </DialogContent>
       </Dialog>
 
@@ -1403,24 +1860,23 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
           <DialogHeader>
             <DialogTitle>Avatar</DialogTitle>
           </DialogHeader>
-          {avatarPickerTarget && (
+          {avatarPickerTarget ? (
             <div className="flex flex-col gap-4">
               <div className="flex items-center gap-3">
-                <div className="h-14 w-14 rounded-full bg-muted overflow-hidden">
-                  {avatarUrlMap[`${avatarPickerTarget.kind}:${avatarPickerTarget.id}`] ? (
-                    <img
-                      src={
-                        avatarUrlMap[`${avatarPickerTarget.kind}:${avatarPickerTarget.id}`]
-                      }
-                      alt=""
-                      className="h-full w-full"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-xl">
-                      {avatarPickerTarget.kind === "group" ? "👥" : getAgentEmoji(id)}
+                {((target) => {
+                  const key = `${target.kind}:${target.id}`;
+                  return (
+                    <div className="h-14 w-14 rounded-full bg-muted overflow-hidden">
+                      {avatarUrlMap[key] ? (
+                        <img src={avatarUrlMap[key]} alt="" className="h-full w-full" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-xl">
+                          {target.kind === "group" ? "👥" : getAgentEmoji(id)}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  );
+                })(avatarPickerTarget!)}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate">{titleDisplay}</p>
                   <p className="text-xs text-muted-foreground truncate">Click a thumb to apply</p>
@@ -1430,9 +1886,10 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
                   size="sm"
                   onClick={async () => {
                     const s = randomSeed();
-                    await setTargetAvatarSeed(avatarPickerTarget.kind, avatarPickerTarget.id, s);
+                    const target = avatarPickerTarget!;
+                    await setTargetAvatarSeed(target.kind, target.id, s);
                     // refresh candidate grid
-                    void openAvatarPicker(avatarPickerTarget);
+                    void openAvatarPicker(target);
                   }}
                 >
                   Random
@@ -1447,9 +1904,10 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
                     type="button"
                     className="h-12 w-12 rounded-full bg-muted overflow-hidden hover:ring-2 hover:ring-ring/40"
                     onClick={async () => {
+                      const target = avatarPickerTarget!;
                       await setTargetAvatarSeed(
-                        avatarPickerTarget.kind,
-                        avatarPickerTarget.id,
+                        target.kind,
+                        target.id,
                         c.seed
                       );
                       setAvatarPickerOpen(false);
@@ -1462,7 +1920,7 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
                 </div>
               </div>
             </div>
-          )}
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>
@@ -1659,9 +2117,18 @@ function UserResponseBubble({
 }) {
   const parsed = JSON.parse(response.response_json || "{}") as {
     text?: string;
-    images?: { mime_type: string; base64_data: string }[];
     mentions?: { userId: string; start: number; length: number; display: string }[];
   };
+
+  const files = Array.isArray((response as any).files) ? ((response as any).files as any[]) : [];
+  const imageFiles = files.filter((f) => {
+    const mime = String(f?.mime_type || "");
+    return mime.startsWith("image/") && typeof f?.inline_base64 === "string" && f.inline_base64.length > 0;
+  });
+  const otherFiles = files.filter((f) => {
+    const mime = String(f?.mime_type || "");
+    return !mime.startsWith("image/");
+  });
 
   const renderTextWithMentions = (
     text: string,
@@ -1718,21 +2185,50 @@ function UserResponseBubble({
         }}
       >
         {parsed.text && (
-          <p className="whitespace-pre-wrap text-sm wrap-anywhere">
-            {renderTextWithMentions(parsed.text, parsed.mentions)}
-          </p>
+          <div className="text-sm wrap-anywhere overflow-hidden min-w-0">
+            {parsed.mentions && parsed.mentions.length > 0 ? (
+              <p className="whitespace-pre-wrap">
+                {renderTextWithMentions(parsed.text, parsed.mentions)}
+              </p>
+            ) : (
+              <MarkdownRenderer>{parsed.text}</MarkdownRenderer>
+            )}
+          </div>
         )}
-        {parsed.images && parsed.images.length > 0 && (
+        {imageFiles.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-2 max-w-full">
-            {parsed.images.map((img, i) => (
-              <img
-                key={i}
-                src={`data:${img.mime_type};base64,${img.base64_data}`}
-                alt=""
-                className="max-h-32 max-w-full h-auto rounded cursor-pointer"
-                onClick={() => onPreview?.(img)}
-              />
-            ))}
+            {imageFiles.map((f, i) => {
+              const mime = String(f?.mime_type || "image/png");
+              const b64 = String(f?.inline_base64 || "");
+              const img = { mime_type: mime, base64_data: b64 };
+              return (
+                <img
+                  key={i}
+                  src={`data:${img.mime_type};base64,${img.base64_data}`}
+                  alt=""
+                  className="max-h-32 max-w-full h-auto rounded cursor-pointer"
+                  onClick={() => onPreview?.(img)}
+                />
+              );
+            })}
+          </div>
+        )}
+
+        {otherFiles.length > 0 && (
+          <div className="mt-2 flex flex-col gap-1 max-w-full">
+            {otherFiles.map((f, i) => {
+              const fileRef = String(f?.file || "");
+              const name = fileRef.split("/").filter(Boolean).pop() || fileRef || "file";
+              return (
+                <div
+                  key={i}
+                  className="px-2 py-1 rounded-lg bg-white/40 dark:bg-black/20 ring-1 ring-border/40 text-xs text-foreground/80 truncate"
+                  title={fileRef}
+                >
+                  {name}
+                </div>
+              );
+            })}
           </div>
         )}
         <p className="text-xs opacity-70 mt-1 text-right">{formatFullTime(response.created_at)}</p>

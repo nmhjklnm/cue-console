@@ -2,6 +2,7 @@
 
 import {
   useMemo,
+  useState,
   type ChangeEvent,
   type ClipboardEvent,
   type Dispatch,
@@ -12,13 +13,20 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn, getAgentEmoji } from "@/lib/utils";
 import { setAgentDisplayName } from "@/lib/actions";
-import { Plus, Send, X } from "lucide-react";
+import { CornerUpLeft, GripVertical, Plus, Send, Trash2, X } from "lucide-react";
 
 type MentionDraft = {
   userId: string;
   start: number;
   length: number;
   display: string;
+};
+
+export type QueuedMessage = {
+  id: string;
+  text: string;
+  images: { mime_type: string; base64_data: string }[];
+  createdAt: number;
 };
 
 const shiftMentions = (from: number, delta: number, list: MentionDraft[]) => {
@@ -61,6 +69,11 @@ export function ChatComposer({
   setNotice,
   setPreviewImage,
   handleSend,
+  enqueueCurrent,
+  queue,
+  removeQueued,
+  recallQueued,
+  reorderQueue,
   handlePaste,
   handleImageUpload,
   textareaRef,
@@ -91,11 +104,16 @@ export function ChatComposer({
   hasPendingRequests: boolean;
   input: string;
   setInput: Dispatch<SetStateAction<string>>;
-  images: { mime_type: string; base64_data: string }[];
-  setImages: Dispatch<SetStateAction<{ mime_type: string; base64_data: string }[]>>;
+  images: { mime_type: string; base64_data: string; file_name?: string }[];
+  setImages: Dispatch<SetStateAction<{ mime_type: string; base64_data: string; file_name?: string }[]>>;
   setNotice: Dispatch<SetStateAction<string | null>>;
   setPreviewImage: Dispatch<SetStateAction<{ mime_type: string; base64_data: string } | null>>;
   handleSend: () => void | Promise<void>;
+  enqueueCurrent: () => void;
+  queue: QueuedMessage[];
+  removeQueued: (id: string) => void;
+  recallQueued: (id: string) => void;
+  reorderQueue: (fromIndex: number, toIndex: number) => void;
   handlePaste: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
   handleImageUpload: (e: ChangeEvent<HTMLInputElement>) => void;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
@@ -128,6 +146,17 @@ export function ChatComposer({
       : ({ left: "var(--cuehub-sidebar-w, 0px)", right: 0 } as const);
   }, [onBack]);
 
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+
+  const submitOrQueue = () => {
+    if (busy) return;
+    if (canSend) {
+      void handleSend();
+      return;
+    }
+    enqueueCurrent();
+  };
+
   return (
     <>
       {/* Input */}
@@ -139,17 +168,106 @@ export function ChatComposer({
             "glass-surface glass-noise"
           )}
         >
+          {/* Queue Panel */}
+          {queue.length > 0 && (
+            <div className="px-1 pt-1">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] text-muted-foreground">
+                  {queue.length} messages queued
+                </p>
+              </div>
+              <div className="mt-1 max-h-28 overflow-y-auto pr-1">
+                <div className="space-y-1">
+                  {queue.map((q, idx) => {
+                    const summary = (q.text || "").split(/\r?\n/)[0] || "(empty)";
+                    const hasImages = (q.images?.length || 0) > 0;
+                    return (
+                      <div
+                        key={q.id}
+                        className={cn(
+                          "flex items-center gap-2 rounded-2xl px-2 py-1",
+                          "bg-white/35 ring-1 ring-white/25"
+                        )}
+                        draggable
+                        onDragStart={(e) => {
+                          setDragIndex(idx);
+                          e.dataTransfer.setData("text/plain", String(idx));
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const raw = e.dataTransfer.getData("text/plain");
+                          const from = Number(raw);
+                          if (Number.isFinite(from)) reorderQueue(from, idx);
+                          setDragIndex(null);
+                        }}
+                        onDragEnd={() => setDragIndex(null)}
+                        data-dragging={dragIndex === idx ? "true" : "false"}
+                      >
+                        <span className="text-muted-foreground">
+                          <GripVertical className="h-3.5 w-3.5" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs">
+                            {summary}
+                            {hasImages ? "  [img]" : ""}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 rounded-xl hover:bg-white/40"
+                          onClick={() => recallQueued(q.id)}
+                          title="Recall to input"
+                        >
+                          <CornerUpLeft className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 rounded-xl hover:bg-white/40"
+                          onClick={() => removeQueued(q.id)}
+                          title="Remove from queue"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Image Preview */}
           {images.length > 0 && (
             <div className="flex max-w-full gap-2 overflow-x-auto px-0.5 pt-0.5">
               {images.map((img, i) => (
                 <div key={i} className="relative shrink-0">
-                  <img
-                    src={`data:${img.mime_type};base64,${img.base64_data}`}
-                    alt=""
-                    className="h-16 w-16 rounded-xl object-cover shadow-sm ring-1 ring-border/60 cursor-pointer"
-                    onClick={() => setPreviewImage(img)}
-                  />
+                  {img.mime_type.startsWith("image/") ? (
+                    <img
+                      src={`data:${img.mime_type};base64,${img.base64_data}`}
+                      alt=""
+                      className="h-16 w-16 rounded-xl object-cover shadow-sm ring-1 ring-border/60 cursor-pointer"
+                      onClick={() => setPreviewImage(img)}
+                    />
+                  ) : (
+                    <div
+                      className="h-16 w-16 rounded-xl bg-white/40 dark:bg-black/20 ring-1 ring-border/60 shadow-sm flex flex-col items-center justify-center px-1"
+                      title={`${img.file_name || "File"}${img.mime_type ? ` (${img.mime_type})` : ""}`}
+                    >
+                      <div className="text-[10px] font-semibold text-muted-foreground">FILE</div>
+                      <div className="mt-0.5 text-[11px] font-semibold text-foreground/80 truncate w-full text-center">
+                        {(img.file_name || "File").slice(0, 10)}
+                      </div>
+                    </div>
+                  )}
                   <button
                     className="absolute -right-1 -top-1 rounded-full bg-destructive p-0.5 text-white"
                     onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
@@ -281,16 +399,16 @@ export function ChatComposer({
               placeholder={
                 hasPendingRequests
                   ? type === "group"
-                    ? "Type... (Enter to send, Shift+Enter for newline, supports @)"
-                    : "Type... (Enter to send, Shift+Enter for newline)"
+                    ? "Type... (Enter to send or queue, Shift+Enter for newline, supports @)"
+                    : "Type... (Enter to send or queue, Shift+Enter for newline)"
                   : "Waiting for new pending requests..."
               }
               title={
                 !hasPendingRequests
                   ? "No pending requests (PENDING/PROCESSING). Send button is disabled."
                   : type === "group"
-                    ? "Type @ to mention members; ↑↓ to navigate, Enter to insert; Enter to send, Shift+Enter for newline"
-                    : "Enter to send, Shift+Enter for newline"
+                    ? "Type @ to mention members; ↑↓ to navigate, Enter to insert; Enter to send or queue, Shift+Enter for newline"
+                    : "Enter to send or queue, Shift+Enter for newline"
               }
               value={input}
               onPaste={handlePaste}
@@ -392,7 +510,7 @@ export function ChatComposer({
 
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  if (canSend) void handleSend();
+                  submitOrQueue();
                 }
               }}
               onKeyUp={() => {
@@ -440,39 +558,45 @@ export function ChatComposer({
                 )}
                 onClick={() => fileInputRef.current?.click()}
                 disabled={busy}
-                title="Add image"
+                title="Add file"
               >
                 <Plus className="h-4.5 w-4.5" />
+              </Button>
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-8 rounded-xl px-2",
+                  "text-muted-foreground hover:text-foreground",
+                  "hover:bg-white/40"
+                )}
+                onClick={() => {
+                  if (busy) return;
+                  enqueueCurrent();
+                }}
+                disabled={busy || (!input.trim() && images.length === 0)}
+                title="Queue (Enter)"
+              >
+                Queue
               </Button>
             </div>
 
             <Button
               type="button"
               onClick={() => {
-                if (canSend) {
-                  void handleSend();
-                  return;
-                }
-                if (!hasPendingRequests) {
-                  setNotice("No pending questions to answer.");
-                  return;
-                }
-                if (!input.trim() && images.length === 0) {
-                  setNotice("Enter a message to send, or select an image.");
-                  return;
-                }
-                setNotice("Unable to send right now. Please try again later.");
+                submitOrQueue();
               }}
-              disabled={busy || (!canSend && (!input.trim() && images.length === 0))}
+              disabled={busy || (!input.trim() && images.length === 0)}
               className={cn(
                 "h-8 w-8 rounded-xl p-0",
                 canSend
                   ? "bg-primary text-primary-foreground hover:bg-primary/90"
                   : "bg-transparent text-muted-foreground hover:bg-white/40",
-                (busy || (!canSend && (!input.trim() && images.length === 0))) &&
-                  "opacity-40 hover:bg-transparent"
+                (busy || (!input.trim() && images.length === 0)) && "opacity-40 hover:bg-transparent"
               )}
-              title={canSend ? "Send" : "Enter a message"}
+              title={canSend ? "Send" : "Queue (cannot send now)"}
             >
               <Send className="h-4 w-4" />
             </Button>
@@ -481,7 +605,7 @@ export function ChatComposer({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="*/*"
             multiple
             className="hidden"
             onChange={handleImageUpload}

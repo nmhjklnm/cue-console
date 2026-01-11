@@ -7,6 +7,24 @@ export function safeLocalStorageGet(key: string): string | null {
   }
 }
 
+function perfEnabled(): boolean {
+  try {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("cue-console:perf") === "1";
+  } catch {
+    return false;
+  }
+}
+
+let dicebearImports:
+  | Promise<[
+      { createAvatar: (style: unknown, options: unknown) => { toString: () => string } },
+      unknown
+    ]>
+  | null = null;
+
+const avatarDataUrlCache = new Map<string, string>();
+
 export function safeLocalStorageSet(key: string, value: string): void {
   try {
     if (typeof window === "undefined") return;
@@ -77,10 +95,24 @@ export function setGroupAvatarSeed(groupId: string, seed: string): void {
 }
 
 export async function thumbsAvatarDataUrl(seed: string): Promise<string> {
-  const [{ createAvatar }, thumbsStyle] = await Promise.all([
-    import("@dicebear/core"),
-    import("@dicebear/thumbs"),
-  ]);
+  const cached = avatarDataUrlCache.get(seed);
+  if (cached) return cached;
+
+  const t0 = perfEnabled() ? performance.now() : 0;
+
+  if (!dicebearImports) {
+    dicebearImports = Promise.all([
+      import("@dicebear/core"),
+      import("@dicebear/thumbs"),
+    ]) as unknown as Promise<[
+      { createAvatar: (style: unknown, options: unknown) => { toString: () => string } },
+      unknown
+    ]>;
+  }
+
+  const [{ createAvatar }, thumbsStyle] = await dicebearImports;
+
+  const t1 = perfEnabled() ? performance.now() : 0;
 
   const svg = createAvatar(thumbsStyle as any, {
     seed,
@@ -92,5 +124,17 @@ export async function thumbsAvatarDataUrl(seed: string): Promise<string> {
   for (let i = 0; i < utf8.length; i++) binary += String.fromCharCode(utf8[i]);
   const b64 = btoa(binary);
 
-  return `data:image/svg+xml;base64,${b64}`;
+  if (t0) {
+    const t2 = performance.now();
+    // eslint-disable-next-line no-console
+    console.log(
+      `[perf] thumbsAvatarDataUrl seed=${String(seed).slice(0, 8)} import=${(t1 - t0).toFixed(1)}ms encode=${(
+        t2 - t1
+      ).toFixed(1)}ms total=${(t2 - t0).toFixed(1)}ms`
+    );
+  }
+
+  const out = `data:image/svg+xml;base64,${b64}`;
+  avatarDataUrlCache.set(seed, out);
+  return out;
 }

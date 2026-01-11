@@ -5,6 +5,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -20,6 +26,8 @@ import {
   deleteConversations,
   fetchArchivedConversationCount,
   fetchConversationList,
+  getUserConfig,
+  setUserConfig,
   unarchiveConversations,
   type ConversationItem,
 } from "@/lib/actions";
@@ -34,10 +42,19 @@ import {
   ChevronLeft,
   ChevronRight,
   MoreHorizontal,
+  Settings,
   X,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+
+function perfEnabled(): boolean {
+  try {
+    return window.localStorage.getItem("cue-console:perf") === "1";
+  } catch {
+    return false;
+  }
+}
 
 function conversationKey(item: Pick<ConversationItem, "type" | "id">) {
   return `${item.type}:${item.id}`;
@@ -82,8 +99,23 @@ export function ConversationList({
       }
   >({ open: false });
 
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const cfg = await getUserConfig();
+        setSoundEnabled(Boolean(cfg.sound_enabled));
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
+
   const ensureAvatarUrl = useCallback(async (kind: "agent" | "group", rawId: string) => {
     if (!rawId) return;
+    const t0 = perfEnabled() ? performance.now() : 0;
     const key = `${kind}:${rawId}`;
     setAvatarUrlMap((prev) => {
       if (prev[key]) return prev;
@@ -95,6 +127,11 @@ export function ConversationList({
         kind === "agent" ? getOrInitAvatarSeed(rawId) : getOrInitGroupAvatarSeed(rawId);
       const url = await thumbsAvatarDataUrl(seed);
       setAvatarUrlMap((prev) => ({ ...prev, [key]: url }));
+      if (t0) {
+        const t1 = performance.now();
+        // eslint-disable-next-line no-console
+        console.log(`[perf] ensureAvatarUrl kind=${kind} id=${rawId} ${(t1 - t0).toFixed(1)}ms`);
+      }
     } catch {
       // ignore
     }
@@ -164,10 +201,16 @@ export function ConversationList({
   }, []);
 
   const loadData = useCallback(async () => {
+    const t0 = perfEnabled() ? performance.now() : 0;
     const data = await fetchConversationList({ view });
     setItems(data);
     const count = await fetchArchivedConversationCount();
     setArchivedCount(count);
+    if (t0) {
+      const t1 = performance.now();
+      // eslint-disable-next-line no-console
+      console.log(`[perf] conversationList loadData view=${view} items=${data.length} ${(t1 - t0).toFixed(1)}ms`);
+    }
   }, [view]);
 
   useEffect(() => {
@@ -186,7 +229,7 @@ export function ConversationList({
       void loadData();
     };
 
-    const interval = setInterval(tick, 3000);
+    const interval = setInterval(tick, 10_000);
 
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") tick();
@@ -724,6 +767,47 @@ export function ConversationList({
         </ScrollArea>
       )}
 
+      <div className={cn("px-2 pb-3", isCollapsed ? "" : "")}>
+        {isCollapsed ? (
+          <div className="flex justify-center">
+            <button
+              type="button"
+              className={cn(
+                "flex h-11 w-11 items-center justify-center rounded-2xl transition",
+                "backdrop-blur-sm hover:bg-white/40"
+              )}
+              onClick={() => setSettingsOpen(true)}
+              title="Settings"
+            >
+              <Settings className="h-5 w-5" />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className={cn(
+              "flex w-full items-center gap-2.5 rounded-2xl px-2.5 py-2 text-left transition overflow-hidden",
+              "backdrop-blur-sm hover:bg-white/40"
+            )}
+            onClick={() => setSettingsOpen(true)}
+            title="Settings"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/55 ring-1 ring-white/40">
+              <Settings className="h-4 w-4" />
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium leading-5">Settings</span>
+                <span className="text-[11px] text-muted-foreground shrink-0">Global</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground whitespace-nowrap leading-4">
+                Sound notification
+              </p>
+            </div>
+          </button>
+        )}
+      </div>
+
       {pendingDelete.length > 0 && (
         <div className="fixed top-4 right-4 z-50 w-65 overflow-hidden rounded-xl border bg-white/85 p-3 text-xs shadow-xl backdrop-blur">
           <div className="flex items-start justify-between gap-2">
@@ -855,6 +939,42 @@ export function ConversationList({
         }}
       />
 
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Settings</DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm font-medium">Sound notification</div>
+              <div className="text-xs text-muted-foreground truncate">
+                Ding on new non-pause messages
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant={soundEnabled ? "default" : "outline"}
+              onClick={async () => {
+                const next = !soundEnabled;
+                setSoundEnabled(next);
+                try {
+                  await setUserConfig({ sound_enabled: next });
+                } catch {
+                  // ignore
+                }
+                window.dispatchEvent(
+                  new CustomEvent("cue-console:configUpdated", {
+                    detail: { sound_enabled: next },
+                  })
+                );
+              }}
+            >
+              {soundEnabled ? "On" : "Off"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {moreMenu.open && (
         <div
           className="fixed z-50 min-w-44 rounded-lg border bg-white/90 p-1 shadow-lg backdrop-blur"
@@ -918,7 +1038,7 @@ function ConversationIconButton({
         "relative flex h-11 w-11 items-center justify-center rounded-2xl transition",
         "backdrop-blur-sm",
         isSelected
-          ? "bg-white/60 text-accent-foreground shadow-sm ring-1 ring-white/45"
+          ? "bg-primary/10 text-accent-foreground shadow-sm"
           : "hover:bg-white/40"
       )}
       onClick={onClick}
@@ -930,7 +1050,7 @@ function ConversationIconButton({
         <span className="text-xl">{emoji}</span>
       )}
       {item.pendingCount > 0 && (
-        <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-sidebar" />
+        <span className="absolute -right-0.5 -top-0.5 z-10 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-sidebar" />
       )}
     </button>
   );
@@ -963,7 +1083,7 @@ function ConversationItemCard({
         "flex w-full items-center gap-2.5 rounded-2xl px-2.5 py-1.5 text-left transition overflow-hidden",
         "backdrop-blur-sm",
         isSelected
-          ? "bg-white/62 text-accent-foreground shadow-sm ring-1 ring-white/45"
+          ? "bg-primary/10 text-accent-foreground shadow-sm"
           : "hover:bg-white/40"
       )}
       onClick={onClick}
@@ -978,14 +1098,16 @@ function ConversationItemCard({
           />
         </span>
       )}
-      <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/55 ring-1 ring-white/40 text-[18px] overflow-hidden">
-        {avatarUrl ? (
-          <img src={avatarUrl} alt="" className="h-full w-full" />
-        ) : (
-          emoji
-        )}
+      <span className="relative h-9 w-9 shrink-0">
+        <span className="flex h-full w-full items-center justify-center rounded-full bg-white/55 ring-1 ring-white/40 text-[18px] overflow-hidden">
+          {avatarUrl ? (
+            <img src={avatarUrl} alt="" className="h-full w-full rounded-full" />
+          ) : (
+            emoji
+          )}
+        </span>
         {item.pendingCount > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-background" />
+          <span className="absolute -right-0.5 -top-0.5 z-10 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-background" />
         )}
       </span>
       <div className="flex-1 min-w-0">

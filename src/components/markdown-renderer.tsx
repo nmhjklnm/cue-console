@@ -6,6 +6,14 @@ import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 
 export function MarkdownRenderer({ children }: { children: string }) {
+  const normalized = useMemo(() => {
+    const src = children || "";
+    return src
+      .replace(/\\r\\n/g, "\n")
+      .replace(/\\n/g, "\n")
+      .replace(/\\t/g, "\t");
+  }, [children]);
+
   const components = useMemo<Partial<Components>>(
     () => ({
       p: ({ children }: { children?: ReactNode }) => <p>{children}</p>,
@@ -46,7 +54,7 @@ export function MarkdownRenderer({ children }: { children: string }) {
   return (
     <div className="md-flow">
       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={components}>
-        {children || ""}
+        {normalized}
       </ReactMarkdown>
     </div>
   );

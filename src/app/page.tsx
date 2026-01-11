@@ -5,23 +5,115 @@ import { ConversationList } from "@/components/conversation-list";
 import { ChatView } from "@/components/chat-view";
 import { CreateGroupDialog } from "@/components/create-group-dialog";
 import { MessageCircle } from "lucide-react";
+import { claimWorkerLease, processQueueTick } from "@/lib/actions";
 
 export default function Home() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<"agent" | "group" | null>(null);
   const [selectedName, setSelectedName] = useState<string>("");
   const [showCreateGroup, setShowCreateGroup] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    if (typeof window === "undefined") return false;
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    let stopped = false;
+    const holderId =
+      (globalThis.crypto && "randomUUID" in globalThis.crypto
+        ? (globalThis.crypto as Crypto).randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    const leaseKey = "cue-console:global-queue-worker";
+    const leaseTtlMs = 12_000;
+    const claimEveryMs = 4_000;
+    const tickEveryMs = 3_000;
+
+    let isLeader = false;
+    let tickTimer: ReturnType<typeof setInterval> | null = null;
+    let claimTimer: ReturnType<typeof setInterval> | null = null;
+
+    const stopTick = () => {
+      if (tickTimer) {
+        clearInterval(tickTimer);
+        tickTimer = null;
+      }
+    };
+
+    const startTick = () => {
+      if (tickTimer) return;
+      tickTimer = setInterval(() => {
+        if (document.visibilityState !== "visible") return;
+        void (async () => {
+          try {
+            const res = await processQueueTick(holderId);
+            if ((res?.sent ?? 0) > 0 || (res?.failed ?? 0) > 0 || (res?.rescheduled ?? 0) > 0) {
+              const removedQueueIds = Array.isArray((res as { removedQueueIds?: unknown })?.removedQueueIds)
+                ? ((res as { removedQueueIds: string[] }).removedQueueIds || [])
+                : [];
+              window.dispatchEvent(
+                new CustomEvent("cue-console:queueUpdated", {
+                  detail: {
+                    removedQueueIds,
+                  },
+                })
+              );
+            }
+          } catch {
+            // ignore
+          }
+        })();
+      }, tickEveryMs);
+    };
+
+    const claimOnce = async () => {
+      try {
+        const res = await claimWorkerLease({ leaseKey, holderId, ttlMs: leaseTtlMs });
+        const nextLeader = Boolean(res.acquired && res.holderId === holderId);
+        if (nextLeader !== isLeader) {
+          isLeader = nextLeader;
+          if (isLeader) {
+            startTick();
+          } else {
+            stopTick();
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    const boot = async () => {
+      await claimOnce();
+      if (stopped) return;
+      claimTimer = setInterval(() => {
+        if (document.visibilityState !== "visible") return;
+        void claimOnce();
+      }, claimEveryMs);
+    };
+
+    void boot();
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void claimOnce();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      stopped = true;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      stopTick();
+      if (claimTimer) clearInterval(claimTimer);
+    };
+  }, []);
+
+  useEffect(() => {
     try {
       const raw = window.localStorage.getItem("cuehub.sidebarCollapsed");
-      if (raw === "1") return true;
-      if (raw === "0") return false;
+      if (raw === "1") setSidebarCollapsed(true);
+      if (raw === "0") setSidebarCollapsed(false);
     } catch {
       // ignore
     }
-    return false;
-  });
+  }, []);
 
   useEffect(() => {
     try {

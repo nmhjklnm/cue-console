@@ -2,6 +2,7 @@
 
 [![Repo: cue-stack](https://img.shields.io/badge/repo-cue--stack-111827)](https://github.com/nmhjklnm/cue-stack)
 [![Repo: cue-console](https://img.shields.io/badge/repo-cue--console-111827)](https://github.com/nmhjklnm/cue-console)
+[![Repo: cue-command](https://img.shields.io/badge/repo-cue--command-111827)](https://github.com/nmhjklnm/cue-command)
 [![Repo: cue-mcp](https://img.shields.io/badge/repo-cue--mcp-111827)](https://github.com/nmhjklnm/cue-mcp)
 
 [![npm](https://img.shields.io/npm/v/cue-console?label=cue-console&color=CB3837)](https://www.npmjs.com/package/cue-console)
@@ -42,13 +43,13 @@ npm install -g cue-console
 ### Step 2: Start `cue-console`
 
 ```bash
-cue-console dev --port 3000
+cue-console start
 ```
 
 Alternatively, you can run it without installing globally:
 
 ```bash
-npx cue-console dev --port 3000
+npx cue-console start
 ```
 
 Open `http://localhost:3000`.
@@ -139,6 +140,7 @@ Not calling cue() means the user cannot continue the interaction.
 After installation, the `cue-console` command is available:
 
 ```bash
+cue-console start
 cue-console dev --port 3000
 cue-console build
 cue-console start --host 0.0.0.0 --port 3000
