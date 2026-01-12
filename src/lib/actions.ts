@@ -15,7 +15,6 @@ import {
   getAgentLastRequest,
   getPendingCountByAgent,
   getAgentTimeline,
-  getAgentLastResponse,
   sendResponse,
   archiveConversation,
   unarchiveConversation,
@@ -24,8 +23,6 @@ import {
   createGroup,
   getAllGroups,
   getGroupMembers,
-  getGroupLastRequest,
-  getGroupLastResponse,
   addGroupMember,
   removeGroupMember,
   deleteGroup,
@@ -33,12 +30,19 @@ import {
   getGroupPendingCount,
   getGroupPendingRequests,
   getGroupTimeline,
+  getGroupLastRequests,
+  getGroupLastResponses,
+  getGroupMemberCounts,
+  getGroupPendingCounts,
   enqueueMessageQueue,
   listMessageQueue,
   deleteMessageQueueItem,
   moveMessageQueueItem,
   acquireWorkerLease,
   processMessageQueueTick,
+  getLastRequestsByAgents,
+  getLastResponsesByAgents,
+  getPendingCountsByAgents,
   type ConversationType,
   type CueResponse,
 } from "./db";
@@ -441,6 +445,16 @@ export async function fetchConversationList(options?: {
 
   const agentNameMap = getAgentDisplayNames(agents);
 
+  const groupIds = groups.map((g) => g.id);
+  const groupMemberCounts = getGroupMemberCounts(groupIds);
+  const groupPendingCounts = getGroupPendingCounts(groupIds);
+  const groupLastReqMap = getGroupLastRequests(groupIds);
+  const groupLastRespMap = getGroupLastResponses(groupIds);
+
+  const agentPendingCounts = getPendingCountsByAgents(agents);
+  const agentLastReqMap = getLastRequestsByAgents(agents);
+  const agentLastRespMap = getLastResponsesByAgents(agents);
+
   const items: ConversationItem[] = [];
 
   const responsePreview = (r: CueResponse | undefined) => {
@@ -461,11 +475,11 @@ export async function fetchConversationList(options?: {
 
   // Groups
   for (const group of groups) {
-    const pendingCount = getGroupPendingCount(group.id);
-    const members = getGroupMembers(group.id);
-    const lastReq = getGroupLastRequest(group.id);
+    const pendingCount = groupPendingCounts[group.id] || 0;
+    const membersCount = groupMemberCounts[group.id] || 0;
+    const lastReq = groupLastReqMap[group.id];
 
-    const lastResp = getGroupLastResponse(group.id);
+    const lastResp = groupLastRespMap[group.id];
     const lastReqTime = lastReq?.created_at;
     const lastRespTime = lastResp?.created_at;
 
@@ -483,7 +497,7 @@ export async function fetchConversationList(options?: {
       type: "group",
       id: group.id,
       name: group.name,
-      displayName: `${group.name} (${members.length} members)`,
+      displayName: `${group.name} (${membersCount} members)`,
       pendingCount,
       lastMessage: (
         lastIsResp
@@ -498,9 +512,9 @@ export async function fetchConversationList(options?: {
 
   // Agents
   for (const agent of agents) {
-    const pendingCount = getPendingCountByAgent(agent);
-    const lastReq = getAgentLastRequest(agent);
-    const lastResp = getAgentLastResponse(agent);
+    const pendingCount = agentPendingCounts[agent] || 0;
+    const lastReq = agentLastReqMap[agent];
+    const lastResp = agentLastRespMap[agent];
     const lastReqTime = lastReq?.created_at;
     const lastRespTime = lastResp?.created_at;
 

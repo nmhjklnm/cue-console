@@ -1032,6 +1032,114 @@ export function getPendingCountByAgent(agentId: string): number {
   return result.count;
 }
 
+function uniqueNonEmptyStrings(xs: string[]): string[] {
+  return Array.from(
+    new Set(xs.map((x) => String(x || "").trim()).filter((x) => x.length > 0))
+  );
+}
+
+function placeholdersFor(values: unknown[]): string {
+  return values.map(() => "?").join(",");
+}
+
+function countFilesForResponseIds(responseIds: number[]): Record<number, number> {
+  const ids = Array.from(new Set(responseIds.filter((x) => Number.isFinite(x) && x > 0)));
+  if (ids.length === 0) return {};
+  const placeholders = placeholdersFor(ids);
+  const rows = getDb()
+    .prepare(
+      `SELECT response_id, COUNT(*) as n
+       FROM cue_response_files
+       WHERE response_id IN (${placeholders})
+       GROUP BY response_id`
+    )
+    .all(...ids) as Array<{ response_id: number; n: number }>;
+
+  const out: Record<number, number> = {};
+  for (const r of rows) out[Number(r.response_id)] = Number(r.n);
+  return out;
+}
+
+export function getPendingCountsByAgents(agentIds: string[]): Record<string, number> {
+  const ids = uniqueNonEmptyStrings(agentIds);
+  if (ids.length === 0) return {};
+  const placeholders = placeholdersFor(ids);
+  const rows = getDb()
+    .prepare(
+      `SELECT agent_id, COUNT(*) as count
+       FROM cue_requests
+       WHERE agent_id IN (${placeholders})
+         AND status = 'PENDING'
+         AND NOT (
+           COALESCE(payload, '') LIKE '%"type"%confirm%'
+           AND COALESCE(payload, '') LIKE '%"variant"%pause%'
+         )
+       GROUP BY agent_id`
+    )
+    .all(...ids) as Array<{ agent_id: string; count: number }>;
+
+  const out: Record<string, number> = {};
+  for (const id of ids) out[id] = 0;
+  for (const r of rows) out[String(r.agent_id)] = Number(r.count);
+  return out;
+}
+
+export function getLastRequestsByAgents(agentIds: string[]): Record<string, CueRequest | undefined> {
+  const ids = uniqueNonEmptyStrings(agentIds);
+  if (ids.length === 0) return {};
+  const placeholders = placeholdersFor(ids);
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM (
+         SELECT
+           r.*,
+           ROW_NUMBER() OVER (PARTITION BY r.agent_id ORDER BY r.created_at DESC) AS rn
+         FROM cue_requests r
+         WHERE r.agent_id IN (${placeholders})
+       )
+       WHERE rn = 1`
+    )
+    .all(...ids) as CueRequest[];
+
+  const out: Record<string, CueRequest | undefined> = {};
+  for (const id of ids) out[id] = undefined;
+  for (const r of rows) out[String(r.agent_id)] = r;
+  return out;
+}
+
+export function getLastResponsesByAgents(agentIds: string[]): Record<string, CueResponse | undefined> {
+  const ids = uniqueNonEmptyStrings(agentIds);
+  if (ids.length === 0) return {};
+  const placeholders = placeholdersFor(ids);
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM (
+         SELECT
+           resp.*,
+           req.agent_id as agent_id,
+           ROW_NUMBER() OVER (PARTITION BY req.agent_id ORDER BY resp.created_at DESC) AS rn
+         FROM cue_responses resp
+         JOIN cue_requests req ON resp.request_id = req.request_id
+         WHERE req.agent_id IN (${placeholders})
+       )
+       WHERE rn = 1`
+    )
+    .all(...ids) as Array<CueResponse & { agent_id: string }>;
+
+  const respIds = rows.map((r) => Number(r.id)).filter((x) => x > 0);
+  const filesCountMap = countFilesForResponseIds(respIds);
+
+  const out: Record<string, CueResponse | undefined> = {};
+  for (const id of ids) out[id] = undefined;
+  for (const r of rows) {
+    const agentId = String(r.agent_id);
+    const respId = Number(r.id);
+    r.files_count = filesCountMap[respId] || 0;
+    out[agentId] = r;
+  }
+  return out;
+}
+
 function formatLocalIsoWithOffset(d: Date): string {
   const offset = -d.getTimezoneOffset();
   const sign = offset >= 0 ? "+" : "-";
@@ -1079,9 +1187,9 @@ export function sendResponse(
 
   if (responseId > 0 && !cancelled) {
     db.prepare(`DELETE FROM cue_response_files WHERE response_id = ?`).run(responseId);
-    const images = Array.isArray((response as any).images) ? ((response as any).images as any[]) : [];
+    const images = Array.isArray(response.images) ? response.images : [];
     for (let i = 0; i < images.length; i += 1) {
-      const img = images[i] as { mime_type?: string; base64_data?: string };
+      const img = images[i];
       const mime = String(img?.mime_type || "");
       const b64 = String(img?.base64_data || "");
       if (!b64) continue;
@@ -1128,6 +1236,109 @@ export function getGroupMembers(groupId: string): string[] {
     .prepare(`SELECT agent_name FROM group_members WHERE group_id = ?`)
     .all(groupId) as { agent_name: string }[];
   return results.map((r) => r.agent_name);
+}
+
+export function getGroupMemberCounts(groupIds: string[]): Record<string, number> {
+  const ids = uniqueNonEmptyStrings(groupIds);
+  if (ids.length === 0) return {};
+  const placeholders = placeholdersFor(ids);
+  const rows = getDb()
+    .prepare(
+      `SELECT group_id, COUNT(*) as count
+       FROM group_members
+       WHERE group_id IN (${placeholders})
+       GROUP BY group_id`
+    )
+    .all(...ids) as Array<{ group_id: string; count: number }>;
+
+  const out: Record<string, number> = {};
+  for (const id of ids) out[id] = 0;
+  for (const r of rows) out[String(r.group_id)] = Number(r.count);
+  return out;
+}
+
+export function getGroupPendingCounts(groupIds: string[]): Record<string, number> {
+  const ids = uniqueNonEmptyStrings(groupIds);
+  if (ids.length === 0) return {};
+  const placeholders = placeholdersFor(ids);
+  const rows = getDb()
+    .prepare(
+      `SELECT gm.group_id as group_id, COUNT(*) as count
+       FROM group_members gm
+       JOIN cue_requests r ON r.agent_id = gm.agent_name
+       WHERE gm.group_id IN (${placeholders})
+         AND r.status = 'PENDING'
+         AND NOT (
+           COALESCE(r.payload, '') LIKE '%"type"%confirm%'
+           AND COALESCE(r.payload, '') LIKE '%"variant"%pause%'
+         )
+       GROUP BY gm.group_id`
+    )
+    .all(...ids) as Array<{ group_id: string; count: number }>;
+
+  const out: Record<string, number> = {};
+  for (const id of ids) out[id] = 0;
+  for (const r of rows) out[String(r.group_id)] = Number(r.count);
+  return out;
+}
+
+export function getGroupLastRequests(groupIds: string[]): Record<string, CueRequest | undefined> {
+  const ids = uniqueNonEmptyStrings(groupIds);
+  if (ids.length === 0) return {};
+  const placeholders = placeholdersFor(ids);
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM (
+         SELECT
+           r.*,
+           gm.group_id as group_id,
+           ROW_NUMBER() OVER (PARTITION BY gm.group_id ORDER BY r.created_at DESC) AS rn
+         FROM group_members gm
+         JOIN cue_requests r ON r.agent_id = gm.agent_name
+         WHERE gm.group_id IN (${placeholders})
+       )
+       WHERE rn = 1`
+    )
+    .all(...ids) as Array<CueRequest & { group_id: string }>;
+
+  const out: Record<string, CueRequest | undefined> = {};
+  for (const id of ids) out[id] = undefined;
+  for (const r of rows) out[String(r.group_id)] = r;
+  return out;
+}
+
+export function getGroupLastResponses(groupIds: string[]): Record<string, CueResponse | undefined> {
+  const ids = uniqueNonEmptyStrings(groupIds);
+  if (ids.length === 0) return {};
+  const placeholders = placeholdersFor(ids);
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM (
+         SELECT
+           resp.*,
+           gm.group_id as group_id,
+           ROW_NUMBER() OVER (PARTITION BY gm.group_id ORDER BY resp.created_at DESC) AS rn
+         FROM group_members gm
+         JOIN cue_requests req ON req.agent_id = gm.agent_name
+         JOIN cue_responses resp ON resp.request_id = req.request_id
+         WHERE gm.group_id IN (${placeholders})
+       )
+       WHERE rn = 1`
+    )
+    .all(...ids) as Array<CueResponse & { group_id: string }>;
+
+  const respIds = rows.map((r) => Number(r.id)).filter((x) => x > 0);
+  const filesCountMap = countFilesForResponseIds(respIds);
+
+  const out: Record<string, CueResponse | undefined> = {};
+  for (const id of ids) out[id] = undefined;
+  for (const r of rows) {
+    const groupId = String(r.group_id);
+    const respId = Number(r.id);
+    r.files_count = filesCountMap[respId] || 0;
+    out[groupId] = r;
+  }
+  return out;
 }
 
 export function addGroupMember(groupId: string, agentName: string): void {
