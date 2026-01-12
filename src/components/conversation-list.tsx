@@ -80,6 +80,7 @@ export function ConversationList({
   const [items, setItems] = useState<ConversationItem[]>([]);
   const [avatarUrlMap, setAvatarUrlMap] = useState<Record<string, string>>({});
   const avatarWorkSeqRef = useRef(0);
+  const avatarUrlMapRef = useRef<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"active" | "archived">("active");
   const [archivedCount, setArchivedCount] = useState(0);
@@ -215,12 +216,16 @@ export function ConversationList({
   }, [view]);
 
   useEffect(() => {
+    avatarUrlMapRef.current = avatarUrlMap;
+  }, [avatarUrlMap]);
+
+  useEffect(() => {
     const seq = ++avatarWorkSeqRef.current;
 
     const keyOf = (it: ConversationItem) => `${it.type}:${it.id}`;
     const needs = (it: ConversationItem) => {
       const k = keyOf(it);
-      const existing = avatarUrlMap[k];
+      const existing = avatarUrlMapRef.current[k];
       return typeof existing !== "string" || existing.length === 0;
     };
 
@@ -281,7 +286,7 @@ export function ConversationList({
       cancelled = true;
       if (handle != null) cancelIdle(handle);
     };
-  }, [avatarUrlMap, ensureAvatarUrl, items]);
+  }, [ensureAvatarUrl, items]);
 
   useEffect(() => {
     const t0 = setTimeout(() => {
