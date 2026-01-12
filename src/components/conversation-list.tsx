@@ -79,6 +79,7 @@ export function ConversationList({
 }: ConversationListProps) {
   const [items, setItems] = useState<ConversationItem[]>([]);
   const [avatarUrlMap, setAvatarUrlMap] = useState<Record<string, string>>({});
+  const avatarWorkSeqRef = useRef(0);
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"active" | "archived">("active");
   const [archivedCount, setArchivedCount] = useState(0);
@@ -214,10 +215,73 @@ export function ConversationList({
   }, [view]);
 
   useEffect(() => {
-    for (const it of items) {
-      void ensureAvatarUrl(it.type, it.id);
+    const seq = ++avatarWorkSeqRef.current;
+
+    const keyOf = (it: ConversationItem) => `${it.type}:${it.id}`;
+    const needs = (it: ConversationItem) => {
+      const k = keyOf(it);
+      const existing = avatarUrlMap[k];
+      return typeof existing !== "string" || existing.length === 0;
+    };
+
+    const pending = items.filter((it) => it.id && needs(it));
+    if (pending.length === 0) return;
+
+    const FIRST_BATCH = 12;
+    const IDLE_BATCH = 4;
+
+    let cancelled = false;
+    const run = async (batch: ConversationItem[]) => {
+      for (const it of batch) {
+        if (cancelled) return;
+        if (avatarWorkSeqRef.current !== seq) return;
+        await ensureAvatarUrl(it.type, it.id);
+      }
+    };
+
+    void run(pending.slice(0, FIRST_BATCH));
+
+    const rest = pending.slice(FIRST_BATCH);
+    if (rest.length === 0) {
+      return () => {
+        cancelled = true;
+      };
     }
-  }, [ensureAvatarUrl, items]);
+
+    const scheduleIdle = (fn: () => void) => {
+      if (typeof (globalThis as any).requestIdleCallback === "function") {
+        return (globalThis as any).requestIdleCallback(fn, { timeout: 1000 });
+      }
+      return window.setTimeout(fn, 60);
+    };
+    const cancelIdle = (handle: number) => {
+      if (typeof (globalThis as any).cancelIdleCallback === "function") {
+        (globalThis as any).cancelIdleCallback(handle);
+        return;
+      }
+      window.clearTimeout(handle);
+    };
+
+    let idx = 0;
+    let handle: number | null = null;
+
+    const pump = () => {
+      if (cancelled) return;
+      if (avatarWorkSeqRef.current !== seq) return;
+      const batch = rest.slice(idx, idx + IDLE_BATCH);
+      idx += IDLE_BATCH;
+      void run(batch);
+      if (idx >= rest.length) return;
+      handle = scheduleIdle(pump);
+    };
+
+    handle = scheduleIdle(pump);
+
+    return () => {
+      cancelled = true;
+      if (handle != null) cancelIdle(handle);
+    };
+  }, [avatarUrlMap, ensureAvatarUrl, items]);
 
   useEffect(() => {
     const t0 = setTimeout(() => {
