@@ -1081,7 +1081,7 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
           "flex-1 min-h-0 p-2 sm:p-4",
           "bg-transparent"
         )}
-        ref={scrollRef}
+        viewportRef={scrollRef}
       >
         <div
           className="mx-auto flex w-full max-w-230 flex-col gap-6 overflow-x-hidden"

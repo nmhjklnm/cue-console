@@ -179,15 +179,26 @@ export function useConversationTimeline({
     [fetchPage, keyForItem, loadingMore, nextCursor, pageSize, setError]
   );
 
+  const loadInitialRef = useRef(loadInitial);
+  const refreshLatestRef = useRef(refreshLatest);
+
+  useEffect(() => {
+    loadInitialRef.current = loadInitial;
+  }, [loadInitial]);
+
+  useEffect(() => {
+    refreshLatestRef.current = refreshLatest;
+  }, [refreshLatest]);
+
   useEffect(() => {
     setTimeline([]);
     setNextCursor(null);
     loadSeqRef.current++;
-    void loadInitial();
+    void loadInitialRef.current();
 
     const tick = () => {
       if (document.visibilityState !== "visible") return;
-      void refreshLatest();
+      void refreshLatestRef.current();
     };
 
     const interval = setInterval(tick, 3000);
@@ -202,7 +213,7 @@ export function useConversationTimeline({
       document.removeEventListener("visibilitychange", onVisibilityChange);
       clearInterval(interval);
     };
-  }, [type, id, loadInitial, refreshLatest]);
+  }, [type, id, pageSize]);
 
   return {
     timeline,
