@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -43,10 +44,6 @@ import {
   cancelRequest,
   batchRespond,
   bootstrapConversation,
-  fetchMessageQueue,
-  enqueueMessage,
-  removeQueuedMessage,
-  reorderQueuedMessage,
   getUserConfig,
   type CueRequest,
   type CueResponse,
@@ -57,6 +54,8 @@ import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { PayloadCard } from "@/components/payload-card";
 import { ChatComposer } from "@/components/chat-composer";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TimelineList } from "@/components/chat/timeline-list";
+import { useMessageQueue } from "@/hooks/use-message-queue";
 
 function perfEnabled(): boolean {
   try {
@@ -91,6 +90,7 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
   const [titleDraft, setTitleDraft] = useState("");
   const [groupTitle, setGroupTitle] = useState(name);
   const [input, setInput] = useState("");
+  const deferredInput = useDeferredValue(input);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -155,12 +155,6 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
 
   const nextCursorRef = useRef<string | null>(null);
   const loadingMoreRef = useRef(false);
-
-  const [queue, setQueue] = useState<
-    { id: string; text: string; images: { mime_type: string; base64_data: string; file_name?: string }[]; createdAt: number }[]
-  >([]);
-
-  const lastQueueFetchRef = useRef<{ key: string; at: number } | null>(null);
   const lastNamesFetchRef = useRef<{ key: string; at: number } | null>(null);
 
   const draftStorageKey = useMemo(() => {
@@ -235,69 +229,26 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
       img.src = url;
     });
 
-  const enqueueCurrent = () => {
-    const currentImages = imagesRef.current;
-    if (!input.trim() && currentImages.length === 0) {
-      setNotice("Enter a message to queue, or select a file.");
-      return;
-    }
-    const qid =
-      (globalThis.crypto && "randomUUID" in globalThis.crypto
-        ? (globalThis.crypto as Crypto).randomUUID()
-        : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
-    const item = {
-      id: qid,
-      text: input,
-      images: currentImages,
-      createdAt: Date.now(),
-    };
-    void (async () => {
-      const res = await enqueueMessage(type, id, item);
-      if (!res.success) {
-        setError(res.error || "Queue failed");
-        return;
-      }
-      setInput("");
-      setImages([]);
-      setDraftMentions([]);
-      await refreshQueue();
-    })();
-  };
-
-  const removeQueued = (qid: string) => {
-    void (async () => {
-      const res = await removeQueuedMessage(qid);
-      if (!res.success) {
-        setError(res.error || "Remove failed");
-        return;
-      }
-      await refreshQueue();
-    })();
-  };
-
-  const recallQueued = (qid: string) => {
-    const item = queue.find((x) => x.id === qid);
-    if (!item) return;
-    setInput(item.text);
-    setImages(item.images);
-    setDraftMentions([]);
-    void (async () => {
-      await removeQueuedMessage(qid);
-      await refreshQueue();
-    })();
-  };
-
-  const reorderQueue = (fromIndex: number, toIndex: number) => {
-    if (fromIndex === toIndex) return;
-    void (async () => {
-      const res = await reorderQueuedMessage(type, id, fromIndex, toIndex);
-      if (!res.success) {
-        setError(res.error || "Reorder failed");
-        return;
-      }
-      await refreshQueue();
-    })();
-  };
+  const {
+    queue,
+    refreshQueue,
+    enqueueCurrent,
+    removeQueued,
+    recallQueued,
+    reorderQueue,
+    setQueue,
+  } = useMessageQueue({
+    type,
+    id,
+    input,
+    imagesRef,
+    setInput,
+    setImages,
+    setDraftMentions,
+    setNotice,
+    setError,
+    perfEnabled,
+  });
 
   const maybeCompressImageFile = async (file: File) => {
     const inputType = (file.type || "").trim();
@@ -437,74 +388,6 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
       el.removeEventListener("drop", onDrop);
     };
   }, [addAttachmentsFromFiles]);
-
-  const refreshQueue = useCallback(async () => {
-    try {
-      const key = `${type}:${id}`;
-      const now = Date.now();
-      const last = lastQueueFetchRef.current;
-      if (last && last.key === key && now - last.at < 500) return;
-      lastQueueFetchRef.current = { key, at: now };
-
-      const t0 = perfEnabled() ? performance.now() : 0;
-      const rows = await fetchMessageQueue(type, id);
-      setQueue(rows);
-      if (t0) {
-        const t1 = performance.now();
-        // eslint-disable-next-line no-console
-        console.log(`[perf] fetchMessageQueue type=${type} id=${id} n=${rows.length} ${(t1 - t0).toFixed(1)}ms`);
-      }
-    } catch {
-      // ignore
-    }
-  }, [type, id]);
-
-  useEffect(() => {
-    const legacyKey = `cue-console:queue:${type}:${id}`;
-    let legacyRaw: string | null = null;
-    try {
-      legacyRaw = localStorage.getItem(legacyKey);
-    } catch {
-      legacyRaw = null;
-    }
-    if (!legacyRaw) return;
-
-    void (async () => {
-      try {
-        const parsed = JSON.parse(legacyRaw || "[]") as unknown;
-        if (!Array.isArray(parsed) || parsed.length === 0) return;
-        for (const x of parsed) {
-          const obj = x as Partial<{
-            id: string;
-            text: string;
-            images: { mime_type: string; base64_data: string; file_name?: string }[];
-            createdAt: number;
-          }>;
-          const qid =
-            typeof obj.id === "string" && obj.id
-              ? obj.id
-              : (globalThis.crypto && "randomUUID" in globalThis.crypto
-                  ? (globalThis.crypto as Crypto).randomUUID()
-                  : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
-          const msg = {
-            id: qid,
-            text: typeof obj.text === "string" ? obj.text : "",
-            images: Array.isArray(obj.images) ? obj.images : [],
-            createdAt: typeof obj.createdAt === "number" ? obj.createdAt : Date.now(),
-          };
-          if (!msg.text.trim() && msg.images.length === 0) continue;
-          await enqueueMessage(type, id, msg);
-        }
-        try {
-          localStorage.removeItem(legacyKey);
-        } catch {
-          // ignore
-        }
-      } finally {
-        await refreshQueue();
-      }
-    })();
-  }, [type, id, refreshQueue]);
 
   useEffect(() => {
     try {
@@ -1198,42 +1081,6 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
   };
 
   useEffect(() => {
-    const onQueueUpdated = (evt: Event) => {
-      if (document.visibilityState !== "visible") return;
-
-      const e = evt as CustomEvent<{ removedQueueIds?: string[] }>;
-      const removed = Array.isArray(e.detail?.removedQueueIds) ? e.detail.removedQueueIds : [];
-      if (removed.length > 0) {
-        const s = new Set(removed);
-        setQueue((prev) => prev.filter((x) => !s.has(x.id)));
-      }
-      void refreshQueue();
-    };
-    window.addEventListener("cue-console:queueUpdated", onQueueUpdated);
-    return () => window.removeEventListener("cue-console:queueUpdated", onQueueUpdated);
-  }, [refreshQueue]);
-
-  useEffect(() => {
-    const tick = () => {
-      if (document.visibilityState !== "visible") return;
-      void refreshQueue();
-    };
-
-    const interval = setInterval(tick, 10_000);
-
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") tick();
-    };
-
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      clearInterval(interval);
-    };
-  }, [refreshQueue]);
-
-  useEffect(() => {
     setBusy(false);
     setError(null);
     setNotice(null);
@@ -1531,19 +1378,6 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
     return () => ro.disconnect();
   }, []);
 
-  const parseDbTime = (dateStr: string) => new Date((dateStr || "").replace(" ", "T"));
-
-  const formatDivider = (dateStr: string) => {
-    const d = parseDbTime(dateStr);
-    return d.toLocaleString("zh-CN", {
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: "Asia/Shanghai",
-    });
-  };
-
   return (
     <div className="flex h-full flex-1 flex-col overflow-hidden">
       {notice && (
@@ -1689,100 +1523,23 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
             </div>
           ) : (
             <>
-              {loadingMore && (
-                <div className="flex justify-center py-1">
-                  <span className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground shadow-sm">
-                    Loading...
-                  </span>
-                </div>
-              )}
-              {nextCursor && (
-                <div className="flex justify-center">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={loadMore}
-                    disabled={loadingMore}
-                  >
-                    {loadingMore ? "Loading..." : "Load more"}
-                  </Button>
-                </div>
-              )}
-
-              {/* Timeline: all messages sorted by time (paged) */}
-              {timeline.map((item, idx) => {
-                const prev = idx > 0 ? timeline[idx - 1] : null;
-
-                const curTime = item.time;
-                const prevTime = prev?.time;
-                const showDivider = (() => {
-                  if (!prevTime) return true;
-                  const a = parseDbTime(prevTime).getTime();
-                  const b = parseDbTime(curTime).getTime();
-                  return b - a > 5 * 60 * 1000;
-                })();
-
-                const divider = showDivider ? (
-                  <div key={`div-${curTime}-${idx}`} className="flex justify-center py-1">
-                    <span className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground shadow-sm">
-                      {formatDivider(curTime)}
-                    </span>
-                  </div>
-                ) : null;
-
-                if (item.item_type === "request") {
-                  const prevSameSender =
-                    prev?.item_type === "request" &&
-                    prev.request.agent_id === item.request.agent_id;
-
-                  const prevWasRequest = prev?.item_type === "request";
-                  const compact = prevWasRequest && prevSameSender;
-
-                  return (
-                    <div key={`wrap-req-${item.request.request_id}`} className={cn(compact ? "-mt-1" : "")}> 
-                      {divider}
-                      <MessageBubble
-                        request={item.request}
-                        showAgent={type === "group"}
-                        agentNameMap={agentNameMap}
-                        avatarUrlMap={avatarUrlMap}
-                        showName={!prevSameSender}
-                        showAvatar={!prevSameSender}
-                        compact={compact}
-                        disabled={busy}
-                        currentInput={input}
-                        isGroup={type === "group"}
-                        onPasteChoice={pasteToInput}
-                        onSubmitConfirm={handleSubmitConfirm}
-                        onMentionAgent={(agentId) => insertMentionAtCursor(agentId, agentId)}
-                        onReply={() => handleReply(item.request.request_id)}
-                        onCancel={() => handleCancel(item.request.request_id)}
-                      />
-                    </div>
-                  );
-                }
-
-                const prevIsResp = prev?.item_type === "response";
-                const compactResp = prevIsResp;
-
-                return (
-                  <div key={`wrap-resp-${item.response.id}`} className={cn(compactResp ? "-mt-1" : "")}> 
-                    {divider}
-                    <UserResponseBubble
-                      response={item.response}
-                      showAvatar={!compactResp}
-                      compact={compactResp}
-                      onPreview={setPreviewImage}
-                    />
-                  </div>
-                );
-              })}
-
-              {timeline.length === 0 && (
-                <div className="flex h-40 items-center justify-center text-muted-foreground">
-                  No messages yet
-                </div>
-              )}
+              <TimelineList
+                type={type}
+                timeline={timeline}
+                nextCursor={nextCursor}
+                loadingMore={loadingMore}
+                onLoadMore={loadMore}
+                agentNameMap={agentNameMap}
+                avatarUrlMap={avatarUrlMap}
+                busy={busy}
+                pendingInput={deferredInput}
+                onPasteChoice={pasteToInput}
+                onSubmitConfirm={handleSubmitConfirm}
+                onMentionAgent={(agentId: string) => insertMentionAtCursor(agentId, agentId)}
+                onReply={handleReply}
+                onCancel={handleCancel}
+                onPreview={setPreviewImage}
+              />
             </>
           )}
         </div>
