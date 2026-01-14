@@ -12,7 +12,21 @@ export function isPauseRequest(req: CueRequest): boolean {
 }
 
 export function filterPendingRequests(requests: CueRequest[]): CueRequest[] {
-  return requests.filter((r) => r.status === "PENDING");
+  const now = Date.now();
+  const TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+  
+  return requests.filter((r) => {
+    if (r.status !== "PENDING") return false;
+    
+    // Filter out requests older than 10 minutes
+    if (r.created_at) {
+      const createdTime = new Date(r.created_at).getTime();
+      const age = now - createdTime;
+      if (age > TIMEOUT_MS) return false;
+    }
+    
+    return true;
+  });
 }
 
 export function getLatestPendingRequest(requests: CueRequest[]): CueRequest | null {
