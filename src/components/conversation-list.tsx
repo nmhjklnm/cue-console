@@ -499,7 +499,9 @@ export function ConversationList({
         "border-r border-border/60",
         "glass-surface-opaque glass-noise",
         "transition-[width] duration-200 ease-out",
-        isCollapsed ? "w-16" : "w-72"
+        // Mobile: full width, Desktop: fixed width
+        "w-full md:w-auto",
+        isCollapsed ? "md:w-16" : "md:w-72"
       )}
     >
       {/* Header */}
