@@ -2,6 +2,7 @@
 
 import {
   useMemo,
+  useRef,
   useState,
   type ChangeEvent,
   type ClipboardEvent,
@@ -147,6 +148,7 @@ export function ChatComposer({
   }, [onBack]);
 
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const isComposingRef = useRef(false);
 
   const submitOrQueue = () => {
     if (busy) return;
@@ -412,6 +414,12 @@ export function ChatComposer({
               }
               value={input}
               onPaste={handlePaste}
+              onCompositionStart={() => {
+                isComposingRef.current = true;
+              }}
+              onCompositionEnd={() => {
+                isComposingRef.current = false;
+              }}
               onChange={(e) => {
                 const next = e.target.value;
                 setInput(next);
@@ -508,7 +516,7 @@ export function ChatComposer({
                   }
                 }
 
-                if (e.key === "Enter" && !e.shiftKey) {
+                if (e.key === "Enter" && !e.shiftKey && !isComposingRef.current) {
                   e.preventDefault();
                   submitOrQueue();
                 }
