@@ -2,6 +2,7 @@ import { useMemo, type ReactNode } from "react";
 import { cn, formatFullTime } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import type { CueResponse } from "@/lib/actions";
+import { useConfig } from "@/contexts/config-context";
 
 interface UserResponseBubbleProps {
   response: CueResponse;
@@ -16,12 +17,13 @@ export function UserResponseBubble({
   compact = false,
   onPreview,
 }: UserResponseBubbleProps) {
+  const { config } = useConfig();
   const parsed = JSON.parse(response.response_json || "{}") as {
     text?: string;
     mentions?: { userId: string; start: number; length: number; display: string }[];
   };
 
-  const analysisOnlyInstruction = "只做分析，不要对代码/文件做任何改动。";
+  const analysisOnlyInstruction = config.chat_mode_append_text;
   const { analysisOnlyApplied, displayText } = useMemo(() => {
     const text = parsed.text;
     if (typeof text !== "string") return { analysisOnlyApplied: false, displayText: text };
@@ -52,7 +54,7 @@ export function UserResponseBubble({
     }
 
     return { analysisOnlyApplied: true, displayText: stripped };
-  }, [parsed.text]);
+  }, [parsed.text, analysisOnlyInstruction]);
 
   const filesRaw = (response as unknown as { files?: unknown }).files;
   const files = Array.isArray(filesRaw) ? filesRaw : [];

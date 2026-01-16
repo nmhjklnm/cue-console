@@ -1,6 +1,21 @@
 import type { CueRequest } from "@/lib/actions";
 import type { MessageActionParams, MentionDraft, ImageAttachment } from "@/types/chat";
 
+function clampNumber(n: number, min: number, max: number): number {
+  if (!Number.isFinite(n)) return min;
+  return Math.max(min, Math.min(max, n));
+}
+
+function getPendingRequestTimeoutMs(): number {
+  try {
+    const raw = window.localStorage.getItem("cue-console:pending_request_timeout_ms");
+    const n = Number(raw);
+    if (Number.isFinite(n)) return clampNumber(n, 60_000, 86_400_000);
+  } catch {
+  }
+  return 10 * 60 * 1000;
+}
+
 export function isPauseRequest(req: CueRequest): boolean {
   if (!req.payload) return false;
   try {
@@ -13,12 +28,12 @@ export function isPauseRequest(req: CueRequest): boolean {
 
 export function filterPendingRequests(requests: CueRequest[]): CueRequest[] {
   const now = Date.now();
-  const TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+  const TIMEOUT_MS = getPendingRequestTimeoutMs();
   
   return requests.filter((r) => {
     if (r.status !== "PENDING") return false;
     
-    // Filter out requests older than 10 minutes
+    // Filter out requests older than timeout
     if (r.created_at) {
       const createdTime = new Date(r.created_at).getTime();
       const age = now - createdTime;

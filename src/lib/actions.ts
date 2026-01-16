@@ -59,6 +59,8 @@ import { v4 as uuidv4 } from "uuid";
 export type UserConfig = {
   sound_enabled: boolean;
   conversation_mode_default: "chat" | "agent";
+  chat_mode_append_text: string;
+  pending_request_timeout_ms: number;
 };
 
 export type QueuedMessage = {
@@ -71,7 +73,19 @@ export type QueuedMessage = {
 const defaultUserConfig: UserConfig = {
   sound_enabled: true,
   conversation_mode_default: "agent",
+  chat_mode_append_text: "只做分析，不要对代码/文件做任何改动。",
+  pending_request_timeout_ms: 10 * 60 * 1000,
 };
+
+function clampNumber(n: number, min: number, max: number): number {
+  if (!Number.isFinite(n)) return min;
+  return Math.max(min, Math.min(max, n));
+}
+
+function normalizeSingleLine(s: string): string {
+  const t = String(s ?? "").replace(/\r?\n/g, " ").trim();
+  return t;
+}
 
 function getUserConfigPath(): string {
   return path.join(os.homedir(), ".cue", "config.json");
@@ -91,6 +105,16 @@ export async function getUserConfig(): Promise<UserConfig> {
         parsed.conversation_mode_default === "chat" || parsed.conversation_mode_default === "agent"
           ? parsed.conversation_mode_default
           : defaultUserConfig.conversation_mode_default,
+
+      chat_mode_append_text:
+        typeof parsed.chat_mode_append_text === "string" && normalizeSingleLine(parsed.chat_mode_append_text).length > 0
+          ? normalizeSingleLine(parsed.chat_mode_append_text)
+          : defaultUserConfig.chat_mode_append_text,
+
+      pending_request_timeout_ms:
+        typeof parsed.pending_request_timeout_ms === "number"
+          ? clampNumber(parsed.pending_request_timeout_ms, 60_000, 86_400_000)
+          : defaultUserConfig.pending_request_timeout_ms,
     };
   } catch {
     return defaultUserConfig;
@@ -106,6 +130,16 @@ export async function setUserConfig(next: Partial<UserConfig>): Promise<UserConf
       next.conversation_mode_default === "chat" || next.conversation_mode_default === "agent"
         ? next.conversation_mode_default
         : prev.conversation_mode_default,
+
+    chat_mode_append_text:
+      typeof next.chat_mode_append_text === "string" && normalizeSingleLine(next.chat_mode_append_text).length > 0
+        ? normalizeSingleLine(next.chat_mode_append_text)
+        : prev.chat_mode_append_text,
+
+    pending_request_timeout_ms:
+      typeof next.pending_request_timeout_ms === "number"
+        ? clampNumber(next.pending_request_timeout_ms, 60_000, 86_400_000)
+        : prev.pending_request_timeout_ms,
   };
   const p = getUserConfigPath();
   await fs.mkdir(path.dirname(p), { recursive: true });

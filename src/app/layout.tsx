@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "@fontsource-variable/source-sans-3";
 import "./globals.css";
+import { Providers } from "./providers";
 
 export const metadata: Metadata = {
   title: "cue-console",
@@ -18,7 +19,7 @@ export default function RootLayout({
         className="antialiased"
         suppressHydrationWarning
       >
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

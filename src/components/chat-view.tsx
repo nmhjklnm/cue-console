@@ -37,6 +37,7 @@ import { useMentions } from "@/hooks/use-mentions";
 import { useAvatarManagement } from "@/hooks/use-avatar-management";
 import { useAudioNotification } from "@/hooks/use-audio-notification";
 import { ChatProviders } from "@/contexts/chat-providers";
+import { useConfig } from "@/contexts/config-context";
 import { useInputContext } from "@/contexts/input-context";
 import { useUIStateContext } from "@/contexts/ui-state-context";
 import { useMessageSender } from "@/hooks/use-message-sender";
@@ -70,15 +71,8 @@ export function ChatView({ type, id, name, onBack }: ChatViewProps) {
 }
 
 function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
-  const [isAtBottom, setIsAtBottom] = useState(true);
-  const [members, setMembers] = useState<string[]>([]);
-  const [agentNameMap, setAgentNameMap] = useState<Record<string, string>>({});
-  const [groupTitle, setGroupTitle] = useState(name);
-  const [previewImage, setPreviewImage] = useState<
-    { mime_type: string; base64_data: string } | null
-  >(null);
-
-  const { input, images, conversationMode, setConversationMode, setInput, setImages } = useInputContext();
+  const { config } = useConfig();
+  const { input, images, conversationMode, setInput, setImages, setConversationMode } = useInputContext();
   const { busy, error, notice, setBusy, setError, setNotice } = useUIStateContext();
   const deferredInput = useDeferredValue(input);
   const imagesRef = useRef(images);
@@ -100,6 +94,12 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
   const inputWrapRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const [members, setMembers] = useState<string[]>([]);
+  const [agentNameMap, setAgentNameMap] = useState<Record<string, string>>({});
+  const [groupTitle, setGroupTitle] = useState<string>(name);
+  const [previewImage, setPreviewImage] = useState<{ mime_type: string; base64_data: string } | null>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
 
   const [composerPadPx, setComposerPadPx] = useState(36 * 4);
 
@@ -428,8 +428,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     setBusy(true);
     setError(null);
 
-    const analysisOnlyInstruction =
-      "只做分析，不要对代码/文件做任何改动。";
+    const analysisOnlyInstruction = config.chat_mode_append_text;
     const textToSend =
       conversationMode === "chat"
         ? text.trim().length > 0
@@ -449,7 +448,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
 
     await refreshLatest();
     setBusy(false);
-  }, [busy, conversationMode, setBusy, setError, refreshLatest]);
+  }, [busy, conversationMode, setBusy, setError, refreshLatest, config.chat_mode_append_text]);
 
   const handleCancel = useCallback(async (requestId: string) => {
     if (busy) return;
@@ -472,8 +471,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     setBusy(true);
     setError(null);
 
-    const analysisOnlyInstruction =
-      "只做分析，不要对代码/文件做任何改动。";
+    const analysisOnlyInstruction = config.chat_mode_append_text;
     const textToSend =
       conversationMode === "chat"
         ? input.trim().length > 0
@@ -492,7 +490,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     setMentions([]);
     await refreshLatest();
     setBusy(false);
-  }, [input, mentions, busy, conversationMode, imagesRef, setBusy, setError, setInput, setImages, setMentions, refreshLatest]);
+  }, [input, mentions, busy, conversationMode, imagesRef, setBusy, setError, setInput, setImages, setMentions, refreshLatest, config.chat_mode_append_text]);
 
 
   const hasPendingRequests = pendingRequests.length > 0;

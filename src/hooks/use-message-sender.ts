@@ -1,6 +1,7 @@
 import { useCallback, useRef } from "react";
 import { submitResponse, batchRespond } from "@/lib/actions";
 import { calculateMessageTargets } from "@/lib/chat-logic";
+import { useConfig } from "@/contexts/config-context";
 import { useInputContext } from "@/contexts/input-context";
 import { useUIStateContext } from "@/contexts/ui-state-context";
 import type { CueRequest } from "@/lib/actions";
@@ -14,6 +15,7 @@ interface UseMessageSenderParams {
 }
 
 export function useMessageSender({ type, pendingRequests, mentions, onSuccess }: UseMessageSenderParams) {
+  const { config } = useConfig();
   const { input, images, conversationMode, setInput, setImages } = useInputContext();
   const { busy, setBusy, setError } = useUIStateContext();
   const imagesRef = useRef(images);
@@ -47,8 +49,7 @@ export function useMessageSender({ type, pendingRequests, mentions, onSuccess }:
     try {
       let result;
 
-      const analysisOnlyInstruction =
-        "只做分析，不要对代码/文件做任何改动。";
+      const analysisOnlyInstruction = config.chat_mode_append_text;
       const textToSend =
         conversationMode === "chat"
           ? input.trim().length > 0
@@ -87,7 +88,7 @@ export function useMessageSender({ type, pendingRequests, mentions, onSuccess }:
     } finally {
       setBusy(false);
     }
-  }, [type, input, conversationMode, mentions, pendingRequests, busy, setBusy, setError, setInput, setImages, onSuccess]);
+  }, [type, input, conversationMode, mentions, pendingRequests, busy, setBusy, setError, setInput, setImages, onSuccess, config.chat_mode_append_text]);
 
   return { send };
 }

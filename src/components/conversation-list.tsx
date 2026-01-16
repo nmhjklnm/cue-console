@@ -116,6 +116,8 @@ export function ConversationList({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [conversationModeDefault, setConversationModeDefault] = useState<"chat" | "agent">("agent");
+  const [chatModeAppendText, setChatModeAppendText] = useState("只做分析，不要对代码/文件做任何改动。");
+  const [pendingRequestTimeoutMs, setPendingRequestTimeoutMs] = useState("600000");
   const [pinnedKeys, setPinnedKeys] = useState<string[]>([]);
 
   useEffect(() => {
@@ -125,6 +127,8 @@ export function ConversationList({
         setSoundEnabled(Boolean(cfg.sound_enabled));
         const nextMode = cfg.conversation_mode_default === "chat" ? "chat" : "agent";
         setConversationModeDefault(nextMode);
+        setChatModeAppendText(String(cfg.chat_mode_append_text || "只做分析，不要对代码/文件做任何改动。"));
+        setPendingRequestTimeoutMs(String(cfg.pending_request_timeout_ms ?? 600000));
         try {
           window.localStorage.setItem("cue-console:conversationModeDefault", nextMode);
         } catch {
@@ -1178,6 +1182,80 @@ export function ConversationList({
                 }}
               >
                 Agent
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <div className="text-sm font-medium">Chat mode append text</div>
+            <div className="text-xs text-muted-foreground">
+              Appended to every message in Chat mode (single line)
+            </div>
+            <div className="mt-2 flex items-center justify-end gap-2">
+              <Input
+                value={chatModeAppendText}
+                onChange={(e) => setChatModeAppendText(e.target.value)}
+                placeholder="Append text"
+                className="h-9 flex-1 min-w-0"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-9 rounded-md px-3 text-xs"
+                onClick={async () => {
+                  const next = chatModeAppendText;
+                  try {
+                    await setUserConfig({ chat_mode_append_text: next });
+                  } catch {
+                  }
+                  window.dispatchEvent(
+                    new CustomEvent("cue-console:configUpdated", {
+                      detail: { chat_mode_append_text: next },
+                    })
+                  );
+                }}
+              >
+                Save
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <div className="text-sm font-medium">Pending request timeout (ms)</div>
+            <div className="text-xs text-muted-foreground">
+              Filter out pending requests older than this duration
+            </div>
+            <div className="mt-2 flex items-center justify-end gap-2">
+              <Input
+                value={pendingRequestTimeoutMs}
+                onChange={(e) => setPendingRequestTimeoutMs(e.target.value)}
+                placeholder="600000"
+                inputMode="numeric"
+                className="h-9 flex-1 min-w-0"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-9 rounded-md px-3 text-xs"
+                onClick={async () => {
+                  const raw = pendingRequestTimeoutMs.trim();
+                  const parsed = Number(raw);
+                  const next = Number.isFinite(parsed) ? parsed : 600000;
+                  try {
+                    await setUserConfig({ pending_request_timeout_ms: next });
+                  } catch {
+                  }
+                  window.dispatchEvent(
+                    new CustomEvent("cue-console:configUpdated", {
+                      detail: { pending_request_timeout_ms: next },
+                    })
+                  );
+                  setPendingRequestTimeoutMs(String(next));
+                }}
+              >
+                Save
               </Button>
             </div>
           </div>
