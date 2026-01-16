@@ -321,7 +321,7 @@ export function useMentions({
     const queryChanged = prevMentionQueryRef.current !== mentionQuery;
     if (queryChanged) {
       shouldAutoScrollMentionRef.current = true;
-      setMentionActive(0);
+      queueMicrotask(() => setMentionActive(0));
       el.scrollTop = 0;
       mentionScrollTopRef.current = 0;
     }

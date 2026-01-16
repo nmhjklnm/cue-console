@@ -14,7 +14,7 @@ interface UseMessageSenderParams {
 }
 
 export function useMessageSender({ type, pendingRequests, mentions, onSuccess }: UseMessageSenderParams) {
-  const { input, images, setInput, setImages } = useInputContext();
+  const { input, images, conversationMode, setInput, setImages } = useInputContext();
   const { busy, setBusy, setError } = useUIStateContext();
   const imagesRef = useRef(images);
   
@@ -46,18 +46,27 @@ export function useMessageSender({ type, pendingRequests, mentions, onSuccess }:
 
     try {
       let result;
+
+      const analysisOnlyInstruction =
+        "只做分析，不要对代码/文件做任何改动。";
+      const textToSend =
+        conversationMode === "chat"
+          ? input.trim().length > 0
+            ? `${input}\n\n${analysisOnlyInstruction}`
+            : analysisOnlyInstruction
+          : input;
       
       if (type === "agent" && targets.targetRequests.length === 1) {
         result = await submitResponse(
           targets.targetRequests[0].request_id,
-          input,
+          textToSend,
           currentImages,
           mentions
         );
       } else {
         result = await batchRespond(
           targets.targetRequests.map((r) => r.request_id),
-          input,
+          textToSend,
           currentImages,
           mentions
         );
@@ -78,7 +87,7 @@ export function useMessageSender({ type, pendingRequests, mentions, onSuccess }:
     } finally {
       setBusy(false);
     }
-  }, [type, input, mentions, pendingRequests, busy, setBusy, setError, setInput, setImages, onSuccess]);
+  }, [type, input, conversationMode, mentions, pendingRequests, busy, setBusy, setError, setInput, setImages, onSuccess]);
 
   return { send };
 }

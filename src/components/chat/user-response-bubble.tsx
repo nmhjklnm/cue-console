@@ -21,13 +21,17 @@ export function UserResponseBubble({
     mentions?: { userId: string; start: number; length: number; display: string }[];
   };
 
-  const files = Array.isArray((response as any).files) ? ((response as any).files as any[]) : [];
+  const filesRaw = (response as unknown as { files?: unknown }).files;
+  const files = Array.isArray(filesRaw) ? filesRaw : [];
   const imageFiles = files.filter((f) => {
-    const mime = String(f?.mime_type || "");
-    return mime.startsWith("image/") && typeof f?.inline_base64 === "string" && f.inline_base64.length > 0;
+    const obj = f && typeof f === "object" ? (f as Record<string, unknown>) : null;
+    const mime = String(obj?.mime_type || "");
+    const b64 = obj?.inline_base64;
+    return mime.startsWith("image/") && typeof b64 === "string" && b64.length > 0;
   });
   const otherFiles = files.filter((f) => {
-    const mime = String(f?.mime_type || "");
+    const obj = f && typeof f === "object" ? (f as Record<string, unknown>) : null;
+    const mime = String(obj?.mime_type || "");
     return !mime.startsWith("image/");
   });
 
@@ -99,8 +103,9 @@ export function UserResponseBubble({
         {imageFiles.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-2 max-w-full">
             {imageFiles.map((f, i) => {
-              const mime = String(f?.mime_type || "image/png");
-              const b64 = String(f?.inline_base64 || "");
+              const obj = f && typeof f === "object" ? (f as Record<string, unknown>) : null;
+              const mime = String(obj?.mime_type || "image/png");
+              const b64 = String(obj?.inline_base64 || "");
               const img = { mime_type: mime, base64_data: b64 };
               return (
                 <img
@@ -118,7 +123,8 @@ export function UserResponseBubble({
         {otherFiles.length > 0 && (
           <div className="mt-2 flex flex-col gap-1 max-w-full">
             {otherFiles.map((f, i) => {
-              const fileRef = String(f?.file || "");
+              const obj = f && typeof f === "object" ? (f as Record<string, unknown>) : null;
+              const fileRef = String(obj?.file || "");
               const name = fileRef.split("/").filter(Boolean).pop() || fileRef || "file";
               return (
                 <div

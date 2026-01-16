@@ -217,7 +217,7 @@ function initTables() {
     .prepare(`SELECT value FROM schema_meta WHERE key = ?`)
     .get("schema_version") as { value?: string } | undefined;
   const version = String(versionRow?.value ?? "");
-  if (version !== "2") {
+  if (version !== "3") {
     const reqCountRow = database.prepare(`SELECT COUNT(*) as n FROM cue_requests`).get() as { n: number };
     const respCountRow = database.prepare(`SELECT COUNT(*) as n FROM cue_responses`).get() as { n: number };
     const reqCount = Number(reqCountRow?.n ?? 0);
@@ -225,7 +225,7 @@ function initTables() {
     if (reqCount === 0 && respCount === 0) {
       database
         .prepare(`INSERT INTO schema_meta (key, value) VALUES (?, ?)`)
-        .run("schema_version", "2");
+        .run("schema_version", "3");
     } else {
       throw new Error(
         "Database schema is outdated (pre-file storage). Please migrate: cueme migrate\n" +
@@ -267,6 +267,17 @@ function initTables() {
   `);
 
   database.exec(`
+    CREATE TABLE IF NOT EXISTS conversation_pins (
+      conv_type TEXT NOT NULL,
+      conv_id TEXT NOT NULL,
+      view TEXT NOT NULL,
+      pin_order INTEGER PRIMARY KEY AUTOINCREMENT,
+      pinned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(conv_type, conv_id, view)
+    )
+  `);
+
+  database.exec(`
     CREATE TABLE IF NOT EXISTS worker_leases (
       lease_key TEXT PRIMARY KEY,
       holder_id TEXT NOT NULL,
@@ -301,6 +312,45 @@ function initTables() {
     CREATE INDEX IF NOT EXISTS idx_cue_message_queue_due
     ON cue_message_queue (status, next_run_at)
   `);
+}
+
+export function pinConversation(convType: ConversationType, convId: string, view: "active" | "archived"): void {
+  const t = String(convType || "").trim();
+  const id = String(convId || "").trim();
+  const v = view === "archived" ? "archived" : "active";
+  if (!id) return;
+  getDb()
+    .prepare(
+      `INSERT OR IGNORE INTO conversation_pins (conv_type, conv_id, view)
+       VALUES (?, ?, ?)`
+    )
+    .run(t, id, v);
+}
+
+export function unpinConversation(convType: ConversationType, convId: string, view: "active" | "archived"): void {
+  const t = String(convType || "").trim();
+  const id = String(convId || "").trim();
+  const v = view === "archived" ? "archived" : "active";
+  if (!id) return;
+  getDb()
+    .prepare(
+      `DELETE FROM conversation_pins
+       WHERE conv_type = ? AND conv_id = ? AND view = ?`
+    )
+    .run(t, id, v);
+}
+
+export function listPinnedConversations(view: "active" | "archived"): Array<{ conv_type: ConversationType; conv_id: string }> {
+  const v = view === "archived" ? "archived" : "active";
+  const rows = getDb()
+    .prepare(
+      `SELECT conv_type, conv_id
+       FROM conversation_pins
+       WHERE view = ?
+       ORDER BY pin_order ASC`
+    )
+    .all(v) as Array<{ conv_type: ConversationType; conv_id: string }>;
+  return rows || [];
 }
 
 function nowIso(): string {

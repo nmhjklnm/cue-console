@@ -114,7 +114,7 @@ export async function thumbsAvatarDataUrl(seed: string): Promise<string> {
 
   const t1 = perfEnabled() ? performance.now() : 0;
 
-  const svg = createAvatar(thumbsStyle as any, {
+  const svg = createAvatar(thumbsStyle, {
     seed,
   }).toString();
 

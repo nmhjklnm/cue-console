@@ -4,6 +4,8 @@ import { handleError, logError } from "@/lib/error-handler";
 import { useInputContext } from "@/contexts/input-context";
 import { useUIStateContext } from "@/contexts/ui-state-context";
 
+type InlineAttachment = Awaited<ReturnType<typeof fileToInlineAttachment>>;
+
 interface UseFileHandlerParams {
   inputWrapRef: React.RefObject<HTMLDivElement | null>;
 }
@@ -23,7 +25,7 @@ export function useFileHandler({ inputWrapRef }: UseFileHandlerParams) {
 
       const successful = results
         .filter((r) => r.status === "fulfilled")
-        .map((r) => (r as PromiseFulfilledResult<any>).value);
+        .map((r) => (r as PromiseFulfilledResult<InlineAttachment>).value);
 
       results.forEach((r, i) => {
         if (r.status === "rejected") {

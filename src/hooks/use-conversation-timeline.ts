@@ -7,6 +7,7 @@ import {
   fetchGroupTimeline,
   type AgentTimelineItem,
   type CueRequest,
+  type QueuedMessage,
 } from "@/lib/actions";
 
 export function useConversationTimeline({
@@ -29,7 +30,7 @@ export function useConversationTimeline({
   onBootstrap: (res: {
     members: string[];
     agentNameMap: Record<string, string>;
-    queue: any[];
+    queue: QueuedMessage[];
     timeline: { items: AgentTimelineItem[]; nextCursor: string | null };
   }) => void;
   isPauseRequest: (req: CueRequest) => boolean;

@@ -1,10 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn, getAgentEmoji, formatFullTime, getWaitingDuration } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { PayloadCard } from "@/components/payload-card";
 import type { CueRequest } from "@/lib/actions";
+import { Copy, Check } from "lucide-react";
 
 interface MessageBubbleProps {
   request: CueRequest;
@@ -44,6 +45,17 @@ export function MessageBubble({
   onCancel,
 }: MessageBubbleProps) {
   const isPending = request.status === "PENDING";
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(request.prompt || "");
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  };
 
   const isPause = useMemo(() => {
     if (!request.payload) return false;
@@ -133,6 +145,17 @@ export function MessageBubble({
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span className="shrink-0">{formatFullTime(request.created_at || "")}</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-auto p-1 text-xs"
+            onClick={handleCopy}
+            disabled={disabled}
+            title={copied ? "已复制" : "复制"}
+          >
+            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            <span className="ml-1">{copied ? "已复制" : "复制"}</span>
+          </Button>
           {isPending && (
             <>
               <Badge variant="outline" className="text-xs shrink-0">

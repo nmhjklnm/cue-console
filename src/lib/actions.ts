@@ -43,6 +43,9 @@ import {
   getLastRequestsByAgents,
   getLastResponsesByAgents,
   getPendingCountsByAgents,
+  pinConversation,
+  unpinConversation,
+  listPinnedConversations,
   type ConversationType,
   type CueResponse,
 } from "./db";
@@ -55,6 +58,7 @@ import { v4 as uuidv4 } from "uuid";
 
 export type UserConfig = {
   sound_enabled: boolean;
+  conversation_mode_default: "chat" | "agent";
 };
 
 export type QueuedMessage = {
@@ -66,6 +70,7 @@ export type QueuedMessage = {
 
 const defaultUserConfig: UserConfig = {
   sound_enabled: true,
+  conversation_mode_default: "agent",
 };
 
 function getUserConfigPath(): string {
@@ -82,6 +87,10 @@ export async function getUserConfig(): Promise<UserConfig> {
         typeof parsed.sound_enabled === "boolean"
           ? parsed.sound_enabled
           : defaultUserConfig.sound_enabled,
+      conversation_mode_default:
+        parsed.conversation_mode_default === "chat" || parsed.conversation_mode_default === "agent"
+          ? parsed.conversation_mode_default
+          : defaultUserConfig.conversation_mode_default,
     };
   } catch {
     return defaultUserConfig;
@@ -93,6 +102,10 @@ export async function setUserConfig(next: Partial<UserConfig>): Promise<UserConf
   const merged: UserConfig = {
     sound_enabled:
       typeof next.sound_enabled === "boolean" ? next.sound_enabled : prev.sound_enabled,
+    conversation_mode_default:
+      next.conversation_mode_default === "chat" || next.conversation_mode_default === "agent"
+        ? next.conversation_mode_default
+        : prev.conversation_mode_default,
   };
   const p = getUserConfigPath();
   await fs.mkdir(path.dirname(p), { recursive: true });
@@ -153,6 +166,25 @@ function parseConversationKey(key: string): { type: "agent" | "group"; id: strin
   const id = key.slice(idx + 1);
   if ((type !== "agent" && type !== "group") || !id) return null;
   return { type, id };
+}
+
+export async function pinConversationByKey(key: string, view: "active" | "archived") {
+  const parsed = parseConversationKey(key);
+  if (!parsed) return { success: false, error: "Invalid conversation key" } as const;
+  pinConversation(parsed.type, parsed.id, view);
+  return { success: true } as const;
+}
+
+export async function unpinConversationByKey(key: string, view: "active" | "archived") {
+  const parsed = parseConversationKey(key);
+  if (!parsed) return { success: false, error: "Invalid conversation key" } as const;
+  unpinConversation(parsed.type, parsed.id, view);
+  return { success: true } as const;
+}
+
+export async function fetchPinnedConversationKeys(view: "active" | "archived"): Promise<string[]> {
+  const rows = listPinnedConversations(view);
+  return rows.map((r) => `${r.conv_type}:${r.conv_id}`);
 }
 
 export async function archiveConversations(keys: string[]) {

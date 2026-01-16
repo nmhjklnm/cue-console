@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-const { spawn } = require("node:child_process");
-const fs = require("node:fs");
-const path = require("node:path");
+let spawn;
+let fs;
+let path;
 
 function printHelp() {
   process.stdout.write(
@@ -44,6 +44,13 @@ function parseArgs(argv) {
 }
 
 async function main() {
+  if (!spawn || !fs || !path) {
+    const childProcess = await import("node:child_process");
+    spawn = childProcess.spawn;
+    fs = await import("node:fs");
+    path = await import("node:path");
+  }
+
   const { command, port, host, passthrough } = parseArgs(process.argv.slice(2));
 
   if (!command) {
@@ -57,12 +64,11 @@ async function main() {
     process.exit(1);
   }
 
-  let nextBin;
-  try {
-    nextBin = require.resolve("next/dist/bin/next");
-  } catch (e) {
+  const pkgRoot = path.resolve(__dirname, "..");
+  const nextBin = path.join(pkgRoot, "node_modules", "next", "dist", "bin", "next");
+  if (!fs.existsSync(nextBin)) {
     process.stderr.write(
-      "Unable to resolve Next.js CLI. Please install dependencies first (e.g. pnpm install).\n"
+      "Unable to resolve Next.js CLI. Please install dependencies first (e.g. npm install).\n"
     );
     process.exit(1);
   }
@@ -70,8 +76,6 @@ async function main() {
   const env = { ...process.env };
   if (port) env.PORT = String(port);
   if (host) env.HOSTNAME = String(host);
-
-  const pkgRoot = path.resolve(__dirname, "..");
 
   const spawnNext = (subcmd) =>
     new Promise((resolve, reject) => {

@@ -4,8 +4,6 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-
-import type { OnPasteChoice, ParsedViewModel } from "./types";
 import {
   fieldDisplayName,
   findFieldLine,
@@ -13,6 +11,7 @@ import {
   parseMultiValues,
   toggleValue,
 } from "./utils";
+import type { OnPasteChoice, ParsedViewModel, ParsedChoice } from "./types";
 
 export function PayloadFormView({
   vm,
@@ -100,7 +99,7 @@ export function PayloadFormView({
             {options.length > 0 ? (
               <div className="grid grid-cols-1 gap-2">
                 {options.map((opt, oidx) => {
-                  const value = formatChoiceLabel(opt as any);
+                  const value = formatChoiceLabel(opt as ParsedChoice);
                   const title = value ? `Click to select: ${fieldKey}: ${value}` : undefined;
                   const isSelected = allowMultiple && !!value && currentSet.has(value);
                   return (

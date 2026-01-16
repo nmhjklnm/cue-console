@@ -64,6 +64,8 @@ export function ChatComposer({
   canSend,
   hasPendingRequests,
   input,
+  conversationMode,
+  setConversationMode,
   setInput,
   images,
   setImages,
@@ -104,6 +106,8 @@ export function ChatComposer({
   canSend: boolean;
   hasPendingRequests: boolean;
   input: string;
+  conversationMode: "chat" | "agent";
+  setConversationMode: (mode: "chat" | "agent") => void;
   setInput: Dispatch<SetStateAction<string>>;
   images: { mime_type: string; base64_data: string; file_name?: string }[];
   setImages: Dispatch<SetStateAction<{ mime_type: string; base64_data: string; file_name?: string }[]>>;
@@ -569,6 +573,27 @@ export function ChatComposer({
                 title="Add file"
               >
                 <Plus className="h-4.5 w-4.5" />
+              </Button>
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-8 rounded-xl px-2",
+                  conversationMode === "chat"
+                    ? "bg-white/35 text-foreground ring-1 ring-white/25"
+                    : "text-muted-foreground hover:text-foreground",
+                  "hover:bg-white/40"
+                )}
+                onClick={() => {
+                  if (busy) return;
+                  setConversationMode(conversationMode === "chat" ? "agent" : "chat");
+                }}
+                disabled={busy}
+                title={conversationMode === "chat" ? "Chat mode" : "Agent mode"}
+              >
+                {conversationMode === "chat" ? "Chat" : "Agent"}
               </Button>
 
               <Button

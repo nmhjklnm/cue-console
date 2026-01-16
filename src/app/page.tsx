@@ -12,7 +12,16 @@ export default function Home() {
   const [selectedType, setSelectedType] = useState<"agent" | "group" | null>(null);
   const [selectedName, setSelectedName] = useState<string>("");
   const [showCreateGroup, setShowCreateGroup] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      const raw = window.localStorage.getItem("cuehub.sidebarCollapsed");
+      if (raw === "1") return true;
+      if (raw === "0") return false;
+      return false;
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     let stopped = false;
@@ -103,16 +112,6 @@ export default function Home() {
       stopTick();
       if (claimTimer) clearInterval(claimTimer);
     };
-  }, []);
-
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem("cuehub.sidebarCollapsed");
-      if (raw === "1") setSidebarCollapsed(true);
-      if (raw === "0") setSidebarCollapsed(false);
-    } catch {
-      // ignore
-    }
   }, []);
 
   useEffect(() => {

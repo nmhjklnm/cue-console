@@ -77,7 +77,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     { mime_type: string; base64_data: string } | null
   >(null);
 
-  const { input, images, setInput, setImages } = useInputContext();
+  const { input, images, conversationMode, setConversationMode, setInput, setImages } = useInputContext();
   const { busy, error, notice, setBusy, setError, setNotice } = useUIStateContext();
   const deferredInput = useDeferredValue(input);
   const imagesRef = useRef(images);
@@ -179,7 +179,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
 
   useEffect(() => {
     if (type !== "group") return;
-    setGroupTitle(name);
+    queueMicrotask(() => setGroupTitle(name));
   }, [name, type]);
 
   const {
@@ -372,6 +372,25 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     setMentions([]);
   }, [type, id]);
 
+  const loadMore = useCallback(async () => {
+    if (!nextCursor) return;
+    if (loadingMore) return;
+
+    const el = scrollRef.current;
+    const prevScrollHeight = el?.scrollHeight ?? 0;
+    const prevScrollTop = el?.scrollTop ?? 0;
+
+    const res = await loadMorePage(nextCursor);
+    requestAnimationFrame(() => {
+      const cur = scrollRef.current;
+      if (!cur) return;
+      const newScrollHeight = cur.scrollHeight;
+      cur.scrollTop = prevScrollTop + (newScrollHeight - prevScrollHeight);
+    });
+
+    nextCursorRef.current = res.cursor;
+  }, [loadMorePage, loadingMore, nextCursor]);
+
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -402,25 +421,6 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     if (!isAtBottom) return;
     el.scrollTop = el.scrollHeight;
   }, [timeline, isAtBottom]);
-
-  const loadMore = useCallback(async () => {
-    if (!nextCursor) return;
-    if (loadingMore) return;
-
-    const el = scrollRef.current;
-    const prevScrollHeight = el?.scrollHeight ?? 0;
-    const prevScrollTop = el?.scrollTop ?? 0;
-
-    const res = await loadMorePage(nextCursor);
-    requestAnimationFrame(() => {
-      const cur = scrollRef.current;
-      if (!cur) return;
-      const newScrollHeight = cur.scrollHeight;
-      cur.scrollTop = prevScrollTop + (newScrollHeight - prevScrollHeight);
-    });
-
-    nextCursorRef.current = res.cursor;
-  }, [loadMorePage, loadingMore, nextCursor]);
 
   const handleSubmitConfirm = useCallback(async (requestId: string, text: string, cancelled: boolean) => {
     if (busy) return;
@@ -611,6 +611,8 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
         canSend={canSend}
         hasPendingRequests={hasPendingRequests}
         input={input}
+        conversationMode={conversationMode}
+        setConversationMode={setConversationMode}
         setInput={setInput}
         images={images}
         setImages={setImages}

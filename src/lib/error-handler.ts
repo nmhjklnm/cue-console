@@ -33,7 +33,7 @@ export function logError(error: unknown, context?: string): void {
   console.error(`${prefix} ${message}`, error);
 }
 
-export function withErrorHandling<T extends (...args: any[]) => Promise<any>>(
+export function withErrorHandling<T extends (...args: unknown[]) => Promise<unknown>>(
   fn: T,
   context: string
 ): T {

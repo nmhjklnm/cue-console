@@ -26,8 +26,11 @@ import {
   deleteConversations,
   fetchArchivedConversationCount,
   fetchConversationList,
+  fetchPinnedConversationKeys,
   getUserConfig,
+  pinConversationByKey,
   setUserConfig,
+  unpinConversationByKey,
   unarchiveConversations,
   type ConversationItem,
 } from "@/lib/actions";
@@ -42,6 +45,7 @@ import {
   ChevronLeft,
   ChevronRight,
   MoreHorizontal,
+  Pin,
   Settings,
   X,
 } from "lucide-react";
@@ -59,6 +63,14 @@ function perfEnabled(): boolean {
 function conversationKey(item: Pick<ConversationItem, "type" | "id">) {
   return `${item.type}:${item.id}`;
 }
+
+type IdleCallbackHandle = number;
+type IdleRequestCallback = () => void;
+type IdleRequestOptions = { timeout?: number };
+type GlobalWithIdleCallbacks = typeof globalThis & {
+  requestIdleCallback?: (cb: IdleRequestCallback, opts?: IdleRequestOptions) => IdleCallbackHandle;
+  cancelIdleCallback?: (handle: IdleCallbackHandle) => void;
+};
 
 interface ConversationListProps {
   selectedId: string | null;
@@ -103,17 +115,35 @@ export function ConversationList({
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [conversationModeDefault, setConversationModeDefault] = useState<"chat" | "agent">("agent");
+  const [pinnedKeys, setPinnedKeys] = useState<string[]>([]);
 
   useEffect(() => {
     void (async () => {
       try {
         const cfg = await getUserConfig();
         setSoundEnabled(Boolean(cfg.sound_enabled));
+        const nextMode = cfg.conversation_mode_default === "chat" ? "chat" : "agent";
+        setConversationModeDefault(nextMode);
+        try {
+          window.localStorage.setItem("cue-console:conversationModeDefault", nextMode);
+        } catch {
+        }
       } catch {
-        // ignore
       }
     })();
   }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const keys = await fetchPinnedConversationKeys(view);
+        setPinnedKeys(Array.isArray(keys) ? keys : []);
+      } catch {
+        setPinnedKeys([]);
+      }
+    })();
+  }, [view]);
 
   const ensureAvatarUrl = useCallback(async (kind: "agent" | "group", rawId: string) => {
     if (!rawId) return;
@@ -254,14 +284,16 @@ export function ConversationList({
     }
 
     const scheduleIdle = (fn: () => void) => {
-      if (typeof (globalThis as any).requestIdleCallback === "function") {
-        return (globalThis as any).requestIdleCallback(fn, { timeout: 1000 });
+      const g = globalThis as GlobalWithIdleCallbacks;
+      if (typeof g.requestIdleCallback === "function") {
+        return g.requestIdleCallback(fn, { timeout: 1000 });
       }
       return window.setTimeout(fn, 60);
     };
     const cancelIdle = (handle: number) => {
-      if (typeof (globalThis as any).cancelIdleCallback === "function") {
-        (globalThis as any).cancelIdleCallback(handle);
+      const g = globalThis as GlobalWithIdleCallbacks;
+      if (typeof g.cancelIdleCallback === "function") {
+        g.cancelIdleCallback(handle);
         return;
       }
       window.clearTimeout(handle);
@@ -356,8 +388,30 @@ export function ConversationList({
     item.displayName.toLowerCase().includes(search.toLowerCase())
   );
 
-  const groups = filtered.filter((i) => i.type === "group");
-  const agents = filtered.filter((i) => i.type === "agent");
+  const pinnedSet = useMemo(() => new Set(pinnedKeys), [pinnedKeys]);
+
+  const groupsAll = filtered.filter((i) => i.type === "group");
+  const agentsAll = filtered.filter((i) => i.type === "agent");
+
+  const groups = useMemo(() => {
+    const byKey = new Map(groupsAll.map((g) => [conversationKey(g), g] as const));
+    const pinned = pinnedKeys
+      .filter((k) => k.startsWith("group:"))
+      .map((k) => byKey.get(k))
+      .filter(Boolean) as ConversationItem[];
+    const rest = groupsAll.filter((g) => !pinnedSet.has(conversationKey(g)));
+    return [...pinned, ...rest];
+  }, [groupsAll, pinnedKeys, pinnedSet]);
+
+  const agents = useMemo(() => {
+    const byKey = new Map(agentsAll.map((a) => [conversationKey(a), a] as const));
+    const pinned = pinnedKeys
+      .filter((k) => k.startsWith("agent:"))
+      .map((k) => byKey.get(k))
+      .filter(Boolean) as ConversationItem[];
+    const rest = agentsAll.filter((a) => !pinnedSet.has(conversationKey(a)));
+    return [...pinned, ...rest];
+  }, [agentsAll, pinnedKeys, pinnedSet]);
 
   const groupsPendingTotal = groups.reduce((sum, g) => sum + g.pendingCount, 0);
   const agentsPendingTotal = agents.reduce((sum, a) => sum + a.pendingCount, 0);
@@ -445,7 +499,7 @@ export function ConversationList({
 
   useEffect(() => {
     if (pendingDelete.length > 0) {
-      setUndoToastKey((v) => v + 1);
+      queueMicrotask(() => setUndoToastKey((v) => v + 1));
     }
   }, [pendingDelete.length]);
 
@@ -768,6 +822,7 @@ export function ConversationList({
                       item={item}
                       avatarUrl={avatarUrlMap[`group:${item.id}`]}
                       isSelected={selectedId === item.id && selectedType === "group"}
+                      isPinned={pinnedSet.has(conversationKey(item))}
                       bulkMode={bulkMode}
                       checked={selectedKeys.has(conversationKey(item))}
                       onToggleChecked={() => toggleSelected(conversationKey(item))}
@@ -810,6 +865,7 @@ export function ConversationList({
                       item={item}
                       avatarUrl={avatarUrlMap[`agent:${item.id}`]}
                       isSelected={selectedId === item.id && selectedType === "agent"}
+                      isPinned={pinnedSet.has(conversationKey(item))}
                       bulkMode={bulkMode}
                       checked={selectedKeys.has(conversationKey(item))}
                       onToggleChecked={() => toggleSelected(conversationKey(item))}
@@ -934,6 +990,32 @@ export function ConversationList({
           style={{ left: menu.x, top: menu.y }}
           onPointerDown={(e) => e.stopPropagation()}
         >
+          {(() => {
+            const isPinned = pinnedSet.has(menu.key);
+            return (
+              <button
+                className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-accent"
+                onClick={async () => {
+                  const key = menu.key;
+                  setMenu({ open: false });
+                  if (!key) return;
+                  if (isPinned) {
+                    await unpinConversationByKey(key, view);
+                    setPinnedKeys((prev) => prev.filter((k) => k !== key));
+                    return;
+                  }
+                  await pinConversationByKey(key, view);
+                  setPinnedKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
+                }}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Pin className="h-4 w-4" />
+                  {isPinned ? "Unpin" : "Pin"}
+                </span>
+              </button>
+            );
+          })()}
+
           {view === "archived" ? (
             <button
               className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-accent disabled:opacity-50"
@@ -1031,7 +1113,6 @@ export function ConversationList({
                 try {
                   await setUserConfig({ sound_enabled: next });
                 } catch {
-                  // ignore
                 }
                 window.dispatchEvent(
                   new CustomEvent("cue-console:configUpdated", {
@@ -1042,6 +1123,63 @@ export function ConversationList({
             >
               {soundEnabled ? "On" : "Off"}
             </Button>
+          </div>
+
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm font-medium">Default conversation mode</div>
+              <div className="text-xs text-muted-foreground truncate">
+                Used when opening cue-console (unless a last-used mode exists)
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant={conversationModeDefault === "chat" ? "default" : "outline"}
+                onClick={async () => {
+                  const next = "chat" as const;
+                  setConversationModeDefault(next);
+                  try {
+                    await setUserConfig({ conversation_mode_default: next });
+                  } catch {
+                  }
+                  try {
+                    window.localStorage.setItem("cue-console:conversationModeDefault", next);
+                  } catch {
+                  }
+                  window.dispatchEvent(
+                    new CustomEvent("cue-console:configUpdated", {
+                      detail: { conversation_mode_default: next },
+                    })
+                  );
+                }}
+              >
+                Chat
+              </Button>
+              <Button
+                type="button"
+                variant={conversationModeDefault === "agent" ? "default" : "outline"}
+                onClick={async () => {
+                  const next = "agent" as const;
+                  setConversationModeDefault(next);
+                  try {
+                    await setUserConfig({ conversation_mode_default: next });
+                  } catch {
+                  }
+                  try {
+                    window.localStorage.setItem("cue-console:conversationModeDefault", next);
+                  } catch {
+                  }
+                  window.dispatchEvent(
+                    new CustomEvent("cue-console:configUpdated", {
+                      detail: { conversation_mode_default: next },
+                    })
+                  );
+                }}
+              >
+                Agent
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -1131,6 +1269,7 @@ function ConversationItemCard({
   item,
   avatarUrl,
   isSelected,
+  isPinned,
   onClick,
   bulkMode,
   checked,
@@ -1140,6 +1279,7 @@ function ConversationItemCard({
   item: ConversationItem;
   avatarUrl?: string;
   isSelected: boolean;
+  isPinned?: boolean;
   onClick: () => void;
   bulkMode?: boolean;
   checked?: boolean;
@@ -1155,7 +1295,9 @@ function ConversationItemCard({
         "backdrop-blur-sm",
         isSelected
           ? "bg-primary/10 text-accent-foreground shadow-sm"
-          : "hover:bg-white/40"
+          : isPinned
+            ? "bg-amber-200/15 hover:bg-amber-200/20"
+            : "hover:bg-white/40"
       )}
       onClick={onClick}
     >
@@ -1183,7 +1325,10 @@ function ConversationItemCard({
       </span>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-sm font-medium leading-5">{truncateText(item.displayName, 18)}</span>
+          <span className="inline-flex items-center gap-1.5 text-sm font-medium leading-5">
+            {isPinned && <Pin className="h-3.5 w-3.5 shrink-0 text-amber-600/80" />}
+            {truncateText(item.displayName, 18)}
+          </span>
           {item.lastTime && (
             <span className="text-[11px] text-muted-foreground shrink-0">
               {formatTime(item.lastTime)}

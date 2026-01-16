@@ -1,12 +1,13 @@
 "use client";
 
-import { memo, useMemo, type ReactNode } from "react";
+import { memo, useMemo, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn, formatFullTime, getAgentEmoji, getWaitingDuration } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { PayloadCard } from "@/components/payload-card";
 import type { AgentTimelineItem, CueRequest, CueResponse } from "@/lib/actions";
+import { Copy, Check } from "lucide-react";
 
 function parseDbTime(dateStr: string) {
   return new Date((dateStr || "").replace(" ", "T"));
@@ -193,6 +194,17 @@ const MessageBubble = memo(function MessageBubble({
   onCancel?: () => void;
 }) {
   const isPending = request.status === "PENDING";
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(request.prompt || "");
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  };
 
   const isPause = useMemo(() => {
     if (!request.payload) return false;
@@ -282,6 +294,17 @@ const MessageBubble = memo(function MessageBubble({
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span className="shrink-0">{formatFullTime(request.created_at || "")}</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-auto p-1 text-xs"
+            onClick={handleCopy}
+            disabled={disabled}
+            title={copied ? "已复制" : "复制"}
+          >
+            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            <span className="ml-1">{copied ? "已复制" : "复制"}</span>
+          </Button>
           {isPending && (
             <>
               <Badge variant="outline" className="text-xs shrink-0">
@@ -350,13 +373,17 @@ const UserResponseBubble = memo(function UserResponseBubble({
     mentions?: { userId: string; start: number; length: number; display: string }[];
   };
 
-  const files = Array.isArray((response as any).files) ? ((response as any).files as any[]) : [];
+  const filesRaw = (response as unknown as { files?: unknown }).files;
+  const files = Array.isArray(filesRaw) ? filesRaw : [];
   const imageFiles = files.filter((f) => {
-    const mime = String(f?.mime_type || "");
-    return mime.startsWith("image/") && typeof f?.inline_base64 === "string" && f.inline_base64.length > 0;
+    const obj = f && typeof f === "object" ? (f as Record<string, unknown>) : null;
+    const mime = String(obj?.mime_type || "");
+    const b64 = obj?.inline_base64;
+    return mime.startsWith("image/") && typeof b64 === "string" && b64.length > 0;
   });
   const otherFiles = files.filter((f) => {
-    const mime = String(f?.mime_type || "");
+    const obj = f && typeof f === "object" ? (f as Record<string, unknown>) : null;
+    const mime = String(obj?.mime_type || "");
     return !mime.startsWith("image/");
   });
 
@@ -423,8 +450,9 @@ const UserResponseBubble = memo(function UserResponseBubble({
         {imageFiles.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-2 max-w-full">
             {imageFiles.map((f, i) => {
-              const mime = String(f?.mime_type || "image/png");
-              const b64 = String(f?.inline_base64 || "");
+              const obj = f && typeof f === "object" ? (f as Record<string, unknown>) : null;
+              const mime = String(obj?.mime_type || "image/png");
+              const b64 = String(obj?.inline_base64 || "");
               const img = { mime_type: mime, base64_data: b64 };
               return (
                 <img
@@ -442,7 +470,8 @@ const UserResponseBubble = memo(function UserResponseBubble({
         {otherFiles.length > 0 && (
           <div className="mt-2 flex flex-col gap-1 max-w-full">
             {otherFiles.map((f, i) => {
-              const fileRef = String(f?.file || "");
+              const obj = f && typeof f === "object" ? (f as Record<string, unknown>) : null;
+              const fileRef = String(obj?.file || "");
               const name = fileRef.split("/").filter(Boolean).pop() || fileRef || "file";
               return (
                 <div
