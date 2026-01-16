@@ -592,6 +592,8 @@ export function processMessageQueueTick(workerId: string, options?: { limit?: nu
   failed: number;
   removedQueueIds: string[];
 } {
+  cancelExpiredPendingRequests({ timeoutMs: 10 * 60 * 1000, excludePause: true });
+
   const limit = Math.max(1, Math.min(50, options?.limit ?? 20));
   const claimed = claimDueQueueItems(workerId, limit);
   let sent = 0;
@@ -686,6 +688,52 @@ export function processMessageQueueTick(workerId: string, options?: { limit?: nu
     failed,
     removedQueueIds,
   };
+}
+
+function cancelExpiredPendingRequests(options?: { timeoutMs?: number; excludePause?: boolean }): {
+  considered: number;
+  cancelled: number;
+} {
+  const timeoutMs = Math.max(1, options?.timeoutMs ?? 10 * 60 * 1000);
+  const excludePause = options?.excludePause ?? true;
+
+  const db = getDb();
+  const now = Date.now();
+  const cutoff = now - timeoutMs;
+
+  const rows = db
+    .prepare(
+      `SELECT request_id, created_at, payload
+       FROM cue_requests
+       WHERE status = 'PENDING'
+       ORDER BY created_at ASC`
+    )
+    .all() as Array<{ request_id: string; created_at: string; payload: string | null }>;
+
+  let cancelled = 0;
+
+  for (const r of rows) {
+    if (excludePause) {
+      const payload = r.payload;
+      if (payload && payload.includes('"type"') && payload.includes('"confirm"')) {
+        const looksLikePause =
+          payload.includes('"variant"') && payload.includes('"pause"');
+        if (looksLikePause) continue;
+      }
+    }
+
+    const createdAtMs = new Date(r.created_at).getTime();
+    if (!Number.isFinite(createdAtMs)) continue;
+    if (createdAtMs > cutoff) continue;
+
+    try {
+      sendResponse(String(r.request_id), { text: "" }, true);
+      cancelled += 1;
+    } catch {
+    }
+  }
+
+  return { considered: rows.length, cancelled };
 }
 
 function metaKey(type: "agent" | "group", id: string): string {
