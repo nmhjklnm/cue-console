@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { cn, formatFullTime } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import type { CueResponse } from "@/lib/actions";
@@ -20,6 +20,39 @@ export function UserResponseBubble({
     text?: string;
     mentions?: { userId: string; start: number; length: number; display: string }[];
   };
+
+  const analysisOnlyInstruction = "只做分析，不要对代码/文件做任何改动。";
+  const { analysisOnlyApplied, displayText } = useMemo(() => {
+    const text = parsed.text;
+    if (typeof text !== "string") return { analysisOnlyApplied: false, displayText: text };
+
+    const raw = text;
+    const lines = raw.split(/\r?\n/);
+    let lastNonEmpty = -1;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i]?.trim().length) {
+        lastNonEmpty = i;
+        break;
+      }
+    }
+    if (lastNonEmpty === -1) return { analysisOnlyApplied: false, displayText: raw };
+
+    const tail = (lines[lastNonEmpty] ?? "").trim();
+    if (tail !== analysisOnlyInstruction) {
+      return { analysisOnlyApplied: false, displayText: raw };
+    }
+
+    let cut = lastNonEmpty;
+    if (cut > 0 && (lines[cut - 1] ?? "").trim().length === 0) {
+      cut -= 1;
+    }
+    const stripped = lines.slice(0, cut).join("\n").replace(/\s+$/, "");
+    if (stripped.trim().length === 0) {
+      return { analysisOnlyApplied: false, displayText: raw };
+    }
+
+    return { analysisOnlyApplied: true, displayText: stripped };
+  }, [parsed.text]);
 
   const filesRaw = (response as unknown as { files?: unknown }).files;
   const files = Array.isArray(filesRaw) ? filesRaw : [];
@@ -89,14 +122,14 @@ export function UserResponseBubble({
           maxWidth: showAvatar ? "calc(100% - 3rem)" : "100%",
         }}
       >
-        {parsed.text && (
+        {displayText && (
           <div className="text-sm wrap-anywhere overflow-hidden min-w-0">
             {parsed.mentions && parsed.mentions.length > 0 ? (
               <p className="whitespace-pre-wrap">
-                {renderTextWithMentions(parsed.text, parsed.mentions)}
+                {renderTextWithMentions(displayText, parsed.mentions)}
               </p>
             ) : (
-              <MarkdownRenderer>{parsed.text}</MarkdownRenderer>
+              <MarkdownRenderer>{displayText}</MarkdownRenderer>
             )}
           </div>
         )}
@@ -138,7 +171,17 @@ export function UserResponseBubble({
             })}
           </div>
         )}
-        <p className="text-xs opacity-70 mt-1 text-right">{formatFullTime(response.created_at)}</p>
+        <div className="mt-1 flex items-center justify-end gap-2 text-xs opacity-70">
+          {analysisOnlyApplied && (
+            <span
+              className="rounded-full bg-white/40 dark:bg-black/20 px-2 py-0.5 ring-1 ring-border/40"
+              title="Chat 模式：只做分析，不做改动（该规则会发送给模型，但不会显示在消息正文里）"
+            >
+              Chat
+            </span>
+          )}
+          <span>{formatFullTime(response.created_at)}</span>
+        </div>
       </div>
       {showAvatar ? (
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-lg">

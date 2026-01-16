@@ -44,6 +44,7 @@ import { useFileHandler } from "@/hooks/use-file-handler";
 import { useDraftPersistence } from "@/hooks/use-draft-persistence";
 import { isPauseRequest, filterPendingRequests } from "@/lib/chat-logic";
 import type { ChatType, MentionDraft } from "@/types/chat";
+import { ArrowDown } from "lucide-react";
 
 function perfEnabled(): boolean {
   try {
@@ -427,9 +428,18 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     setBusy(true);
     setError(null);
 
+    const analysisOnlyInstruction =
+      "只做分析，不要对代码/文件做任何改动。";
+    const textToSend =
+      conversationMode === "chat"
+        ? text.trim().length > 0
+          ? `${text}\n\n${analysisOnlyInstruction}`
+          : analysisOnlyInstruction
+        : text;
+
     const result = cancelled
       ? await cancelRequest(requestId)
-      : await submitResponse(requestId, text, [], []);
+      : await submitResponse(requestId, textToSend, [], []);
 
     if (!result.success) {
       setError(result.error || "Send failed");
@@ -439,7 +449,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
 
     await refreshLatest();
     setBusy(false);
-  }, [busy, setBusy, setError, refreshLatest]);
+  }, [busy, conversationMode, setBusy, setError, refreshLatest]);
 
   const handleCancel = useCallback(async (requestId: string) => {
     if (busy) return;
@@ -461,7 +471,17 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     if (busy) return;
     setBusy(true);
     setError(null);
-    const result = await submitResponse(requestId, input, currentImages, mentions);
+
+    const analysisOnlyInstruction =
+      "只做分析，不要对代码/文件做任何改动。";
+    const textToSend =
+      conversationMode === "chat"
+        ? input.trim().length > 0
+          ? `${input}\n\n${analysisOnlyInstruction}`
+          : analysisOnlyInstruction
+        : input;
+
+    const result = await submitResponse(requestId, textToSend, currentImages, mentions);
     if (!result.success) {
       setError(result.error || "Reply failed");
       setBusy(false);
@@ -472,7 +492,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     setMentions([]);
     await refreshLatest();
     setBusy(false);
-  }, [input, mentions, busy, imagesRef, setBusy, setError, setInput, setImages, setMentions, refreshLatest]);
+  }, [input, mentions, busy, conversationMode, imagesRef, setBusy, setError, setInput, setImages, setMentions, refreshLatest]);
 
 
   const hasPendingRequests = pendingRequests.length > 0;
@@ -517,8 +537,18 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     return () => ro.disconnect();
   }, []);
 
+  const scrollToBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    try {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    } catch {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, []);
+
   return (
-    <div className="flex h-full flex-1 flex-col overflow-hidden">
+    <div className="relative flex h-full flex-1 flex-col overflow-hidden">
       {notice && (
         <div className="pointer-events-none fixed right-5 top-5 z-50">
           <div className="rounded-2xl border bg-background/95 px-3 py-2 text-sm shadow-lg backdrop-blur">
@@ -597,6 +627,26 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
           )}
         </div>
       </ScrollArea>
+
+      {!bootstrapping && !isAtBottom && (
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          onClick={scrollToBottom}
+          className={cn(
+            "absolute right-4 z-40",
+            "h-10 w-10 rounded-full",
+            "bg-background/85 backdrop-blur",
+            "shadow-sm",
+            "hover:bg-background"
+          )}
+          style={{ bottom: Math.max(16, composerPadPx - 8) }}
+          title="Scroll to bottom"
+        >
+          <ArrowDown className="h-4 w-4" />
+        </Button>
+      )}
 
       {error && (
         <div className="border-t bg-background px-3 py-2 text-sm text-destructive">
