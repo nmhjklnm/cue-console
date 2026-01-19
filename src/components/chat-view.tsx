@@ -236,14 +236,26 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
         convId: id,
         limit: 80,
       });
-      if (res.success && res.replied > 0) {
+      if (!res.success) {
+        setNotice(`Bot tick failed: ${res.error}`);
+        return;
+      }
+      if (!res.acquired) {
+        setNotice("Bot is busy in another window");
+        return;
+      }
+      if (res.replied === 0) {
+        setNotice("Bot is enabled (no pending to reply)");
+        return;
+      }
+      if (res.replied > 0) {
         await refreshLatest();
       }
     } catch {
     } finally {
       botTickBusyRef.current = false;
     }
-  }, [id, refreshLatest, type]);
+  }, [id, refreshLatest, setNotice, type]);
 
   const toggleBot = useCallback(async (): Promise<boolean> => {
     const prev = botEnabled;
@@ -287,7 +299,12 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
           limit: 80,
         });
         if (cancelled) return;
-        if (res.success && res.replied > 0) {
+        if (!res.success) {
+          setNotice(`Bot tick failed: ${res.error}`);
+          return;
+        }
+        if (!res.acquired) return;
+        if (res.replied > 0) {
           await refreshLatest();
         }
       } catch {
@@ -302,7 +319,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [botEnabled, id, refreshLatest, type]);
+  }, [botEnabled, id, refreshLatest, setNotice, type]);
 
 
   const handleTitleChange = async (newTitle: string) => {

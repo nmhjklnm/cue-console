@@ -922,6 +922,25 @@ export function getPendingRequests(): CueRequest[] {
     .all() as CueRequest[];
 }
 
+export function getAgentPendingRequests(agentId: string, limit: number = 200): CueRequest[] {
+  const cleanAgentId = String(agentId || "").trim();
+  if (!cleanAgentId) return [];
+  const lim = Math.max(1, Math.min(500, Math.floor(Number(limit) || 0)));
+  return getDb()
+    .prepare(
+      `SELECT * FROM cue_requests
+       WHERE agent_id = ?
+         AND status = 'PENDING'
+         AND NOT (
+           COALESCE(payload, '') LIKE '%"type"%confirm%'
+           AND COALESCE(payload, '') LIKE '%"variant"%pause%'
+         )
+       ORDER BY created_at ASC
+       LIMIT ?`
+    )
+    .all(cleanAgentId, lim) as CueRequest[];
+}
+
 export function getRequestsByAgent(agentId: string): CueRequest[] {
   return getDb()
     .prepare(

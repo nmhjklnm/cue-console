@@ -40,6 +40,7 @@ import {
   moveMessageQueueItem,
   acquireWorkerLease,
   processMessageQueueTick,
+  getAgentPendingRequests,
   getLastRequestsByAgents,
   getLastResponsesByAgents,
   getPendingCountsByAgents,
@@ -177,18 +178,7 @@ export async function processBotTick(args: {
     const limit = Math.max(1, Math.min(200, args.limit ?? 50));
     const pending =
       convType === "agent"
-        ? getRequestsByAgent(convId)
-            .filter((r) => r.status === "PENDING")
-            .filter((r) => {
-              if (!r.payload) return true;
-              try {
-                const obj = JSON.parse(r.payload) as Record<string, unknown>;
-                return !(obj?.type === "confirm" && obj?.variant === "pause");
-              } catch {
-                return true;
-              }
-            })
-            .slice(0, limit)
+        ? getAgentPendingRequests(convId, limit)
         : getGroupPendingRequests(convId).slice(0, limit);
 
     let replied = 0;
