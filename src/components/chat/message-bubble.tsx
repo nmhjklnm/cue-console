@@ -6,6 +6,7 @@ import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { PayloadCard } from "@/components/payload-card";
 import type { CueRequest } from "@/lib/actions";
 import { Copy, Check } from "lucide-react";
+import Image from "next/image";
 
 interface MessageBubbleProps {
   request: CueRequest;
@@ -110,7 +111,14 @@ export function MessageBubble({
           }}
         >
           {avatarUrl ? (
-            <img src={avatarUrl} alt="" className="h-full w-full rounded-full" />
+            <Image
+              src={avatarUrl}
+              alt=""
+              width={36}
+              height={36}
+              unoptimized
+              className="h-full w-full rounded-full"
+            />
           ) : (
             getAgentEmoji(request.agent_id || "")
           )}

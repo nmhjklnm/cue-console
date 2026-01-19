@@ -97,7 +97,6 @@ export function useConversationTimeline({
 
       if (t0) {
         const t1 = performance.now();
-        // eslint-disable-next-line no-console
         console.log(
           `[perf] bootstrapConversation type=${type} id=${id} items=${asc.length} queue=${res.queue.length} ${(t1 - t0).toFixed(1)}ms`
         );

@@ -86,4 +86,6 @@ export interface ConversationItem {
   lastMessage?: string;
   lastTime?: string;
   pendingCount: number;
+  agentRuntime?: string;
+  projectName?: string;
 }

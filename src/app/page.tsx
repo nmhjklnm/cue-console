@@ -5,7 +5,7 @@ import { ConversationList } from "@/components/conversation-list";
 import { ChatView } from "@/components/chat-view";
 import { CreateGroupDialog } from "@/components/create-group-dialog";
 import { MessageCircle } from "lucide-react";
-import { claimWorkerLease, processQueueTick } from "@/lib/actions";
+import { claimWorkerLease, fetchBotEnabledConversations, processBotTick, processQueueTick } from "@/lib/actions";
 
 export default function Home() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -82,6 +82,96 @@ export default function Home() {
           } else {
             stopTick();
           }
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    const boot = async () => {
+      await claimOnce();
+      if (stopped) return;
+      claimTimer = setInterval(() => {
+        if (document.visibilityState !== "visible") return;
+        void claimOnce();
+      }, claimEveryMs);
+    };
+
+    void boot();
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void claimOnce();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      stopped = true;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      stopTick();
+      if (claimTimer) clearInterval(claimTimer);
+    };
+  }, []);
+
+  useEffect(() => {
+    let stopped = false;
+    const holderId =
+      (globalThis.crypto && "randomUUID" in globalThis.crypto
+        ? (globalThis.crypto as Crypto).randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    const leaseKey = "cue-console:global-bot-worker";
+    const leaseTtlMs = 12_000;
+    const claimEveryMs = 4_000;
+    const tickEveryMs = 2_500;
+
+    let isLeader = false;
+    let tickTimer: ReturnType<typeof setInterval> | null = null;
+    let claimTimer: ReturnType<typeof setInterval> | null = null;
+    let rrIndex = 0;
+
+    const stopTick = () => {
+      if (tickTimer) {
+        clearInterval(tickTimer);
+        tickTimer = null;
+      }
+    };
+
+    const startTick = () => {
+      if (tickTimer) return;
+      tickTimer = setInterval(() => {
+        if (document.visibilityState !== "visible") return;
+        void (async () => {
+          try {
+            const enabled = await fetchBotEnabledConversations(200);
+            if (!Array.isArray(enabled) || enabled.length === 0) return;
+
+            const maxPerTick = 10;
+            const n = Math.min(enabled.length, maxPerTick);
+            for (let i = 0; i < n; i += 1) {
+              const idx = (rrIndex + i) % enabled.length;
+              const row = enabled[idx] as { conv_type?: unknown; conv_id?: unknown };
+              const convType = row?.conv_type === "group" ? "group" : "agent";
+              const convId = String(row?.conv_id || "").trim();
+              if (!convId) continue;
+              await processBotTick({ holderId, convType, convId, limit: 80 });
+            }
+            rrIndex = (rrIndex + n) % enabled.length;
+          } catch {
+            // ignore
+          }
+        })();
+      }, tickEveryMs);
+    };
+
+    const claimOnce = async () => {
+      try {
+        const res = await claimWorkerLease({ leaseKey, holderId, ttlMs: leaseTtlMs });
+        const nextLeader = Boolean(res.acquired && res.holderId === holderId);
+        if (nextLeader !== isLeader) {
+          isLeader = nextLeader;
+          if (isLeader) startTick();
+          else stopTick();
         }
       } catch {
         // ignore

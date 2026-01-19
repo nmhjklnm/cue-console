@@ -6,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import Image from "next/image";
 
 interface ImagePreviewDialogProps {
   image: { mime_type: string; base64_data: string } | null;
@@ -21,10 +22,13 @@ export function ImagePreviewDialog({ image, onClose }: ImagePreviewDialogProps) 
         </DialogHeader>
         {image && (
           <div className="flex items-center justify-center">
-            <img
+            <Image
               src={`data:${image.mime_type};base64,${image.base64_data}`}
               alt=""
-              className="max-h-[70vh] rounded-lg"
+              width={1200}
+              height={800}
+              unoptimized
+              className="max-h-[70vh] h-auto w-auto rounded-lg"
             />
           </div>
         )}

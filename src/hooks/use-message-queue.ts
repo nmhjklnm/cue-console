@@ -54,7 +54,6 @@ export function useMessageQueue({
       setQueue(rows as QueuedMessage[]);
       if (t0) {
         const t1 = performance.now();
-        // eslint-disable-next-line no-console
         console.log(
           `[perf] fetchMessageQueue type=${type} id=${id} n=${rows.length} ${(t1 - t0).toFixed(1)}ms`
         );

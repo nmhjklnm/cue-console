@@ -126,7 +126,6 @@ export async function thumbsAvatarDataUrl(seed: string): Promise<string> {
 
   if (t0) {
     const t2 = performance.now();
-    // eslint-disable-next-line no-console
     console.log(
       `[perf] thumbsAvatarDataUrl seed=${String(seed).slice(0, 8)} import=${(t1 - t0).toFixed(1)}ms encode=${(
         t2 - t1

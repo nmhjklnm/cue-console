@@ -212,6 +212,16 @@ function initTables() {
     )
   `);
 
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS bot_enabled_conversations (
+      conv_type TEXT NOT NULL,
+      conv_id TEXT NOT NULL,
+      enabled INTEGER NOT NULL,
+      updated_at DATETIME NOT NULL,
+      PRIMARY KEY (conv_type, conv_id)
+    )
+  `);
+
   // Mode B: guide migrate and exit if an old DB exists.
   const versionRow = database
     .prepare(`SELECT value FROM schema_meta WHERE key = ?`)
@@ -283,6 +293,16 @@ function initTables() {
       holder_id TEXT NOT NULL,
       expires_at DATETIME NOT NULL,
       updated_at DATETIME NOT NULL
+    )
+  `);
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS agent_envs (
+      agent_id TEXT PRIMARY KEY,
+      agent_runtime TEXT,
+      project_dir TEXT,
+      agent_terminal TEXT,
+      updated_at DATETIME
     )
   `);
 
@@ -410,6 +430,46 @@ export function acquireWorkerLease(args: {
 }
 
 export type ConversationType = "agent" | "group";
+
+export function setBotEnabledConversation(convType: ConversationType, convId: string, enabled: boolean): void {
+  const t = convType === "group" ? "group" : "agent";
+  const id = String(convId || "").trim();
+  if (!id) return;
+  const now = nowIso();
+  getDb()
+    .prepare(
+      `INSERT INTO bot_enabled_conversations (conv_type, conv_id, enabled, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(conv_type, conv_id) DO UPDATE SET
+         enabled = excluded.enabled,
+         updated_at = excluded.updated_at`
+    )
+    .run(t, id, enabled ? 1 : 0, now);
+}
+
+export function getBotEnabledConversation(convType: ConversationType, convId: string): boolean {
+  const t = convType === "group" ? "group" : "agent";
+  const id = String(convId || "").trim();
+  if (!id) return false;
+  const row = getDb()
+    .prepare(`SELECT enabled FROM bot_enabled_conversations WHERE conv_type = ? AND conv_id = ?`)
+    .get(t, id) as { enabled?: number } | undefined;
+  return Number(row?.enabled ?? 0) === 1;
+}
+
+export function listBotEnabledConversations(limit?: number): Array<{ conv_type: ConversationType; conv_id: string }> {
+  const lim = Math.max(1, Math.min(500, Math.floor(Number(limit ?? 200))));
+  const rows = getDb()
+    .prepare(
+      `SELECT conv_type, conv_id
+       FROM bot_enabled_conversations
+       WHERE enabled = 1
+       ORDER BY updated_at DESC
+       LIMIT ?`
+    )
+    .all(lim) as Array<{ conv_type: ConversationType; conv_id: string }>;
+  return rows || [];
+}
 
 export interface CueQueuedMessage {
   id: string;
@@ -857,6 +917,41 @@ export function getAgentDisplayNames(agentIds: string[]): Record<string, string>
   const map: Record<string, string> = {};
   for (const r of rows) map[r.agent_id] = r.display_name;
   return map;
+}
+
+export interface AgentEnv {
+  agent_id: string;
+  agent_runtime: string | null;
+  project_dir: string | null;
+  agent_terminal: string | null;
+  updated_at: string | null;
+}
+
+export function getAgentEnvMap(agentIds: string[]): Record<string, AgentEnv> {
+  const unique = Array.from(new Set(agentIds.filter(Boolean)));
+  if (unique.length === 0) return {};
+  const placeholders = unique.map(() => "?").join(",");
+  const rows = getDb()
+    .prepare(
+      `SELECT agent_id, agent_runtime, project_dir, agent_terminal, updated_at
+       FROM agent_envs
+       WHERE agent_id IN (${placeholders})`
+    )
+    .all(...unique) as AgentEnv[];
+  const map: Record<string, AgentEnv> = {};
+  for (const r of rows) map[r.agent_id] = r;
+  return map;
+}
+
+export function getAgentEnv(agentId: string): AgentEnv | undefined {
+  const row = getDb()
+    .prepare(
+      `SELECT agent_id, agent_runtime, project_dir, agent_terminal, updated_at
+       FROM agent_envs
+       WHERE agent_id = ?`
+    )
+    .get(agentId) as AgentEnv | undefined;
+  return row;
 }
 
 // Type definitions

@@ -38,19 +38,20 @@ import {
 } from "@/lib/actions";
 import {
   Archive,
-  Plus,
-  MessageCircle,
-  Search,
-  ChevronDown,
-  Users,
   Bot,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  MessageCircle,
   MoreHorizontal,
   Pin,
+  Plus,
+  Search,
   Settings,
+  Users,
   X,
 } from "lucide-react";
+import Image from "next/image";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 
 function perfEnabled(): boolean {
@@ -135,8 +136,7 @@ export function ConversationList({
         setPendingRequestTimeoutMs(String(cfg.pending_request_timeout_ms ?? 600000));
         setBotModeReplyText(
           String(
-            (cfg as any).bot_mode_reply_text ||
-              DEFAULT_USER_CONFIG.bot_mode_reply_text
+            cfg.bot_mode_reply_text || DEFAULT_USER_CONFIG.bot_mode_reply_text
           )
         );
         try {
@@ -175,7 +175,6 @@ export function ConversationList({
       setAvatarUrlMap((prev) => ({ ...prev, [key]: url }));
       if (t0) {
         const t1 = performance.now();
-        // eslint-disable-next-line no-console
         console.log(`[perf] ensureAvatarUrl kind=${kind} id=${rawId} ${(t1 - t0).toFixed(1)}ms`);
       }
     } catch {
@@ -254,7 +253,6 @@ export function ConversationList({
     setArchivedCount(count);
     if (t0) {
       const t1 = performance.now();
-      // eslint-disable-next-line no-console
       console.log(`[perf] conversationList loadData view=${view} items=${data.length} ${(t1 - t0).toFixed(1)}ms`);
     }
   }, [view]);
@@ -428,7 +426,6 @@ export function ConversationList({
   }, [agentsAll, pinnedKeys, pinnedSet]);
 
   const groupsPendingTotal = groups.reduce((sum, g) => sum + g.pendingCount, 0);
-  const agentsPendingTotal = agents.reduce((sum, a) => sum + a.pendingCount, 0);
 
   const isCollapsed = !!collapsed;
 
@@ -442,14 +439,6 @@ export function ConversationList({
   );
 
   const selectedKeyList = useMemo(() => Array.from(selectedKeys), [selectedKeys]);
-
-  const isSelectable = useCallback(
-    (item: ConversationItem) => {
-      if (view === "archived") return true;
-      return true;
-    },
-    [view]
-  );
 
   const toggleSelected = useCallback(
     (key: string) => {
@@ -542,7 +531,7 @@ export function ConversationList({
       confirmLabel: "Delete",
       destructive: true,
     });
-  }, [selectedKeyList, scheduleDelete, clearBulk]);
+  }, [selectedKeyList]);
 
   const handleArchiveAll = useCallback(async () => {
     if (view !== "active") return;
@@ -558,7 +547,7 @@ export function ConversationList({
       description: `Archive ${keys.length} conversation(s) (current filter, only pending == 0). You can unarchive later.`,
       confirmLabel: "Archive",
     });
-  }, [view, filtered, loadData]);
+  }, [view, filtered]);
 
   return (
     <div
@@ -840,10 +829,9 @@ export function ConversationList({
                       bulkMode={bulkMode}
                       checked={selectedKeys.has(conversationKey(item))}
                       onToggleChecked={() => toggleSelected(conversationKey(item))}
-                      view={view}
                       onClick={() => {
                         if (bulkMode) {
-                          if (isSelectable(item)) toggleSelected(conversationKey(item));
+                          toggleSelected(conversationKey(item));
                           return;
                         }
                         onSelect(item.id, "group", item.name);
@@ -883,10 +871,9 @@ export function ConversationList({
                       bulkMode={bulkMode}
                       checked={selectedKeys.has(conversationKey(item))}
                       onToggleChecked={() => toggleSelected(conversationKey(item))}
-                      view={view}
                       onClick={() => {
                         if (bulkMode) {
-                          if (isSelectable(item)) toggleSelected(conversationKey(item));
+                          toggleSelected(conversationKey(item));
                           return;
                         }
                         onSelect(item.id, "agent", item.name);
@@ -1377,7 +1364,14 @@ function ConversationIconButton({
       title={item.displayName}
     >
       {avatarUrl ? (
-        <img src={avatarUrl} alt="" className="h-7 w-7 rounded-full" />
+        <Image
+          src={avatarUrl}
+          alt=""
+          width={28}
+          height={28}
+          unoptimized
+          className="h-7 w-7 rounded-full"
+        />
       ) : (
         <span className="text-xl">{emoji}</span>
       )}
@@ -1397,7 +1391,6 @@ function ConversationItemCard({
   bulkMode,
   checked,
   onToggleChecked,
-  view,
 }: {
   item: ConversationItem;
   avatarUrl?: string;
@@ -1407,9 +1400,9 @@ function ConversationItemCard({
   bulkMode?: boolean;
   checked?: boolean;
   onToggleChecked?: () => void;
-  view?: "active" | "archived";
 }) {
   const emoji = item.type === "group" ? "👥" : getAgentEmoji(item.name);
+  const showAgentTags = item.type === "agent" && (item.agentRuntime || item.projectName);
 
   return (
     <button
@@ -1437,7 +1430,14 @@ function ConversationItemCard({
       <span className="relative h-9 w-9 shrink-0">
         <span className="flex h-full w-full items-center justify-center rounded-full bg-white/55 ring-1 ring-white/40 text-[18px] overflow-hidden">
           {avatarUrl ? (
-            <img src={avatarUrl} alt="" className="h-full w-full rounded-full" />
+            <Image
+              src={avatarUrl}
+              alt=""
+              width={36}
+              height={36}
+              unoptimized
+              className="h-full w-full rounded-full"
+            />
           ) : (
             emoji
           )}
@@ -1458,6 +1458,20 @@ function ConversationItemCard({
             </span>
           )}
         </div>
+        {showAgentTags && (
+          <div className="mt-0.5 flex flex-wrap gap-1">
+            {item.agentRuntime && (
+              <span className="inline-flex items-center rounded-full border bg-white/55 px-2 py-0.5 text-[10px] text-muted-foreground">
+                {item.agentRuntime}
+              </span>
+            )}
+            {item.projectName && (
+              <span className="inline-flex items-center rounded-full border bg-white/55 px-2 py-0.5 text-[10px] text-muted-foreground">
+                {item.projectName}
+              </span>
+            )}
+          </div>
+        )}
         {item.lastMessage && (
           <p className="text-[11px] text-muted-foreground whitespace-nowrap leading-4">
             {truncateText(item.lastMessage.replace(/\n/g, ' '), 20)}

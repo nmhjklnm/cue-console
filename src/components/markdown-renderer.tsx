@@ -4,6 +4,7 @@ import { type ReactNode, useMemo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
+import Image from "next/image";
 
 export function MarkdownRenderer({ children }: { children: string }) {
   const normalized = useMemo(() => {
@@ -40,7 +41,17 @@ export function MarkdownRenderer({ children }: { children: string }) {
       img: (props) => {
         const safeSrc = typeof props.src === "string" ? props.src : undefined;
         const safeAlt = typeof props.alt === "string" ? props.alt : "";
-        return <img {...props} src={safeSrc} alt={safeAlt} className="max-w-full h-auto" />;
+        if (!safeSrc) return null;
+        return (
+          <Image
+            src={safeSrc}
+            alt={safeAlt}
+            width={1200}
+            height={800}
+            unoptimized
+            className="max-w-full h-auto"
+          />
+        );
       },
       table: ({ children }: { children?: ReactNode }) => (
         <div className="mt-2 max-w-full overflow-auto">

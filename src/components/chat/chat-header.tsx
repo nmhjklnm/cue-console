@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn, getAgentEmoji } from "@/lib/utils";
 import { ChevronLeft, Github } from "lucide-react";
+import Image from "next/image";
 
 interface ChatHeaderProps {
   type: "agent" | "group";
@@ -11,6 +12,8 @@ interface ChatHeaderProps {
   titleDisplay: string;
   avatarUrl: string;
   members: string[];
+  agentRuntime?: string;
+  projectName?: string;
   onBack?: () => void;
   onAvatarClick: () => void;
   onTitleChange: (newTitle: string) => Promise<void>;
@@ -22,12 +25,16 @@ export function ChatHeader({
   titleDisplay,
   avatarUrl,
   members,
+  agentRuntime,
+  projectName,
   onBack,
   onAvatarClick,
   onTitleChange,
 }: ChatHeaderProps) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
+
+  const showAgentTags = type === "agent" && (agentRuntime || projectName);
 
   const beginEditTitle = () => {
     setEditingTitle(true);
@@ -65,7 +72,14 @@ export function ChatHeader({
           title="Change avatar"
         >
           {avatarUrl ? (
-            <img src={avatarUrl} alt="" className="h-full w-full" />
+            <Image
+              src={avatarUrl}
+              alt=""
+              width={36}
+              height={36}
+              unoptimized
+              className="h-full w-full"
+            />
           ) : (
             <span className="flex h-full w-full items-center justify-center text-lg">
               {type === "group" ? "👥" : getAgentEmoji(id)}
@@ -101,6 +115,20 @@ export function ChatHeader({
             >
               {titleDisplay}
             </h2>
+          )}
+          {showAgentTags && (
+            <div className="mt-0.5 flex flex-wrap gap-1">
+              {agentRuntime && (
+                <span className="inline-flex items-center rounded-full border bg-white/55 px-2 py-0.5 text-[10px] text-muted-foreground">
+                  {agentRuntime}
+                </span>
+              )}
+              {projectName && (
+                <span className="inline-flex items-center rounded-full border bg-white/55 px-2 py-0.5 text-[10px] text-muted-foreground">
+                  {projectName}
+                </span>
+              )}
+            </div>
           )}
           {type === "group" && members.length > 0 && (
             <p className="text-xs text-muted-foreground truncate">

@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
   type Dispatch,
-  type MutableRefObject,
   type RefObject,
   type SetStateAction,
 } from "react";

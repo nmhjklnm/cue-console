@@ -1,4 +1,4 @@
-import type { CueRequest, CueResponse } from "@/lib/actions";
+import type { CueRequest } from "@/lib/actions";
 
 export type ChatType = "agent" | "group";
 

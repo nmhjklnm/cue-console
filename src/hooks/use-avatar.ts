@@ -124,7 +124,6 @@ export function useAvatar() {
       }
       if (t0) {
         const t1 = performance.now();
-        // eslint-disable-next-line no-console
         console.log(
           `[perf] ensureAvatarUrl(group members) n=${members.length} ${(t1 - t0).toFixed(1)}ms`
         );

@@ -21,6 +21,7 @@ import {
 import { cn, getAgentEmoji } from "@/lib/utils";
 import { setAgentDisplayName } from "@/lib/actions";
 import { Bot, CornerUpLeft, GripVertical, Plus, Send, Trash2, X } from "lucide-react";
+import Image from "next/image";
 
 type MentionDraft = {
   userId: string;
@@ -75,7 +76,6 @@ export function ChatComposer({
   setInput,
   images,
   setImages,
-  setNotice,
   setPreviewImage,
   botEnabled,
   onToggleBot,
@@ -119,7 +119,6 @@ export function ChatComposer({
   setInput: Dispatch<SetStateAction<string>>;
   images: { mime_type: string; base64_data: string; file_name?: string }[];
   setImages: Dispatch<SetStateAction<{ mime_type: string; base64_data: string; file_name?: string }[]>>;
-  setNotice: Dispatch<SetStateAction<string | null>>;
   setPreviewImage: Dispatch<SetStateAction<{ mime_type: string; base64_data: string } | null>>;
   botEnabled: boolean;
   onToggleBot: () => Promise<boolean>;
@@ -317,9 +316,12 @@ export function ChatComposer({
               {images.map((img, i) => (
                 <div key={i} className="relative shrink-0">
                   {img.mime_type.startsWith("image/") ? (
-                    <img
+                    <Image
                       src={`data:${img.mime_type};base64,${img.base64_data}`}
                       alt=""
+                      width={64}
+                      height={64}
+                      unoptimized
                       className="h-16 w-16 rounded-xl object-cover shadow-sm ring-1 ring-border/60 cursor-pointer"
                       onClick={() => setPreviewImage(img)}
                     />

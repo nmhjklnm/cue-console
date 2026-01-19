@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { getAgentEmoji } from "@/lib/utils";
+import Image from "next/image";
 
 interface AvatarPickerDialogProps {
   open: boolean;
@@ -41,7 +42,14 @@ export function AvatarPickerDialog({
             <div className="flex items-center gap-3">
               <div className="h-14 w-14 rounded-full bg-muted overflow-hidden">
                 {currentAvatarUrl ? (
-                  <img src={currentAvatarUrl} alt="" className="h-full w-full" />
+                  <Image
+                    src={currentAvatarUrl}
+                    alt=""
+                    width={56}
+                    height={56}
+                    unoptimized
+                    className="h-full w-full"
+                  />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-xl">
                     {target.kind === "group" ? "👥" : getAgentEmoji(target.id)}
@@ -70,7 +78,14 @@ export function AvatarPickerDialog({
                     title="Apply"
                   >
                     {c.url ? (
-                      <img src={c.url} alt="" className="h-full w-full" />
+                      <Image
+                        src={c.url}
+                        alt=""
+                        width={48}
+                        height={48}
+                        unoptimized
+                        className="h-full w-full"
+                      />
                     ) : null}
                   </button>
                 ))}

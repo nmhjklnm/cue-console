@@ -7,7 +7,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ClipboardEvent,
 } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
@@ -19,14 +18,16 @@ import {
 } from "@/components/ui/dialog";
 import { cn, getAgentEmoji } from "@/lib/utils";
 import { randomSeed } from "@/lib/avatar";
+import Image from "next/image";
 import {
   setAgentDisplayName,
   setGroupName,
   submitResponse,
   cancelRequest,
-  batchRespond,
   processBotTick,
-  type CueRequest,
+  fetchBotEnabled,
+  updateBotEnabled,
+  fetchAgentEnv,
 } from "@/lib/actions";
 import { ChatComposer } from "@/components/chat-composer";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -45,7 +46,7 @@ import { useMessageSender } from "@/hooks/use-message-sender";
 import { useFileHandler } from "@/hooks/use-file-handler";
 import { useDraftPersistence } from "@/hooks/use-draft-persistence";
 import { isPauseRequest, filterPendingRequests } from "@/lib/chat-logic";
-import type { ChatType, MentionDraft } from "@/types/chat";
+import type { ChatType } from "@/types/chat";
 import { ArrowDown } from "lucide-react";
 
 function perfEnabled(): boolean {
@@ -78,10 +79,6 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
   const deferredInput = useDeferredValue(input);
   const imagesRef = useRef(images);
 
-  const botStorageKey = useMemo(() => {
-    return `cue-console:botEnabled:${type}:${id}`;
-  }, [type, id]);
-
   const [botEnabled, setBotEnabled] = useState(false);
 
   const { soundEnabled, setSoundEnabled, playDing } = useAudioNotification();
@@ -105,6 +102,8 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
   const [members, setMembers] = useState<string[]>([]);
   const [agentNameMap, setAgentNameMap] = useState<Record<string, string>>({});
   const [groupTitle, setGroupTitle] = useState<string>(name);
+  const [agentRuntime, setAgentRuntime] = useState<string | undefined>(undefined);
+  const [projectName, setProjectName] = useState<string | undefined>(undefined);
   const [previewImage, setPreviewImage] = useState<{ mime_type: string; base64_data: string } | null>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
 
@@ -161,12 +160,11 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
 
   const {
     queue,
-    refreshQueue,
+    setQueue,
     enqueueCurrent,
     removeQueued,
     recallQueued,
     reorderQueue,
-    setQueue,
   } = useMessageQueue({
     type,
     id,
@@ -195,6 +193,32 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     if (type === "agent") return agentNameMap[id] || id;
     return groupTitle;
   }, [agentNameMap, groupTitle, id, type]);
+
+  useEffect(() => {
+    if (type !== "agent") {
+      setAgentRuntime(undefined);
+      setProjectName(undefined);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const env = await fetchAgentEnv(id);
+        if (cancelled) return;
+        setAgentRuntime(env.agentRuntime);
+        setProjectName(env.projectName);
+      } catch {
+        if (cancelled) return;
+        setAgentRuntime(undefined);
+        setProjectName(undefined);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, type]);
 
   useEffect(() => {
     if (type !== "group") return;
@@ -260,9 +284,9 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
   const toggleBot = useCallback(async (): Promise<boolean> => {
     const prev = botEnabled;
     const next = !prev;
-    setBotEnabled(next);
     try {
-      window.localStorage.setItem(botStorageKey, next ? "1" : "0");
+      await updateBotEnabled(type, id, next);
+      setBotEnabled(next);
       if (next) void triggerBotTickOnce();
       return next;
     } catch {
@@ -270,16 +294,24 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
       setNotice("Failed to toggle bot");
       return prev;
     }
-  }, [botEnabled, botStorageKey, setNotice, triggerBotTickOnce]);
+  }, [botEnabled, id, setNotice, triggerBotTickOnce, type]);
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(botStorageKey);
-      setBotEnabled(raw === "1");
-    } catch {
-      setBotEnabled(false);
-    }
-  }, [botStorageKey]);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetchBotEnabled(type, id);
+        if (cancelled) return;
+        setBotEnabled(Boolean(res.enabled));
+      } catch {
+        if (cancelled) return;
+        setBotEnabled(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, type]);
 
   useEffect(() => {
     if (!botEnabled) return;
@@ -371,7 +403,6 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
         await ensureAvatarUrl("agent", id);
         if (t0) {
           const t1 = performance.now();
-          // eslint-disable-next-line no-console
           console.log(`[perf] ensureAvatarUrl(agent) id=${id} ${(t1 - t0).toFixed(1)}ms`);
         }
       })();
@@ -384,7 +415,6 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
       await ensureAvatarUrl("group", id);
       if (t0) {
         const t1 = performance.now();
-        // eslint-disable-next-line no-console
         console.log(`[perf] ensureAvatarUrl(group) id=${id} ${(t1 - t0).toFixed(1)}ms`);
       }
     })();
@@ -399,7 +429,6 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
       }
       if (t0) {
         const t1 = performance.now();
-        // eslint-disable-next-line no-console
         console.log(`[perf] ensureAvatarUrl(group members) group=${id} n=${members.length} ${(t1 - t0).toFixed(1)}ms`);
       }
     })();
@@ -485,7 +514,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     setImages([]);
     imagesRef.current = [];
     setMentions([]);
-  }, [type, id]);
+  }, [type, id, setBusy, setError, setImages, setInput, setMentions, setNotice]);
 
   const loadMore = useCallback(async () => {
     if (!nextCursor) return;
@@ -528,7 +557,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     el.addEventListener("scroll", onScroll, { passive: true });
     onScroll();
     return () => el.removeEventListener("scroll", onScroll);
-  }, []);
+  }, [loadMore]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -619,7 +648,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     if (!notice) return;
     const t = setTimeout(() => setNotice(null), 2200);
     return () => clearTimeout(t);
-  }, [notice]);
+  }, [notice, setNotice]);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -674,6 +703,8 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
         titleDisplay={titleDisplay}
         avatarUrl={type === "group" ? avatarUrlMap[`group:${id}`] : avatarUrlMap[`agent:${id}`]}
         members={members}
+        agentRuntime={agentRuntime}
+        projectName={projectName}
         onBack={onBack}
         onAvatarClick={() => openAvatarPicker({ kind: type, id })}
         onTitleChange={handleTitleChange}
@@ -778,7 +809,6 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
         setInput={setInput}
         images={images}
         setImages={setImages}
-        setNotice={setNotice}
         setPreviewImage={setPreviewImage}
         botEnabled={botEnabled}
         onToggleBot={toggleBot}
@@ -820,10 +850,13 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
           {previewImage ? (
             <div className="flex items-center justify-center">
               {((img) => (
-                <img
+                <Image
                   src={`data:${img.mime_type};base64,${img.base64_data}`}
                   alt=""
-                  className="max-h-[70vh] rounded-lg"
+                  width={1200}
+                  height={800}
+                  unoptimized
+                  className="max-h-[70vh] h-auto w-auto rounded-lg"
                 />
               ))(previewImage!)}
             </div>
@@ -844,7 +877,14 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
                   return (
                     <div className="h-14 w-14 rounded-full bg-muted overflow-hidden">
                       {avatarUrlMap[key] ? (
-                        <img src={avatarUrlMap[key]} alt="" className="h-full w-full" />
+                        <Image
+                          src={avatarUrlMap[key]}
+                          alt=""
+                          width={56}
+                          height={56}
+                          unoptimized
+                          className="h-full w-full"
+                        />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-xl">
                           {target.kind === "group" ? "👥" : getAgentEmoji(id)}
@@ -890,7 +930,16 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
                     }}
                     title="Apply"
                   >
-                    {c.url ? <img src={c.url} alt="" className="h-full w-full" /> : null}
+                    {c.url ? (
+                      <Image
+                        src={c.url}
+                        alt=""
+                        width={48}
+                        height={48}
+                        unoptimized
+                        className="h-full w-full"
+                      />
+                    ) : null}
                   </button>
                 ))}
                 </div>

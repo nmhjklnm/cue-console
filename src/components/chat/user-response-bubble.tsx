@@ -3,6 +3,7 @@ import { cn, formatFullTime } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import type { CueResponse } from "@/lib/actions";
 import { useConfig } from "@/contexts/config-context";
+import Image from "next/image";
 
 interface UserResponseBubbleProps {
   response: CueResponse;
@@ -143,11 +144,14 @@ export function UserResponseBubble({
               const b64 = String(obj?.inline_base64 || "");
               const img = { mime_type: mime, base64_data: b64 };
               return (
-                <img
+                <Image
                   key={i}
                   src={`data:${img.mime_type};base64,${img.base64_data}`}
                   alt=""
-                  className="max-h-32 max-w-full h-auto rounded cursor-pointer"
+                  width={512}
+                  height={256}
+                  unoptimized
+                  className="max-h-32 max-w-full h-auto w-auto rounded cursor-pointer"
                   onClick={() => onPreview?.(img)}
                 />
               );

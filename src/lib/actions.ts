@@ -11,6 +11,8 @@ import {
   getAllAgents,
   getConversationMetaMap,
   getAgentDisplayNames,
+  getAgentEnv,
+  getAgentEnvMap,
   upsertAgentDisplayName,
   getAgentLastRequest,
   getPendingCountByAgent,
@@ -47,6 +49,9 @@ import {
   pinConversation,
   unpinConversation,
   listPinnedConversations,
+  getBotEnabledConversation,
+  setBotEnabledConversation,
+  listBotEnabledConversations,
   type ConversationType,
   type CueResponse,
 } from "./db";
@@ -409,6 +414,19 @@ export async function claimWorkerLease(args: {
   return acquireWorkerLease(args);
 }
 
+export async function fetchBotEnabled(type: ConversationType, id: string) {
+  return { enabled: getBotEnabledConversation(type, id) } as const;
+}
+
+export async function updateBotEnabled(type: ConversationType, id: string, enabled: boolean) {
+  setBotEnabledConversation(type, id, enabled);
+  return { success: true, enabled } as const;
+}
+
+export async function fetchBotEnabledConversations(limit?: number) {
+  return listBotEnabledConversations(limit);
+}
+
 // Responses
 export async function submitResponse(
   requestId: string,
@@ -561,6 +579,7 @@ export async function fetchConversationList(options?: {
     : groupsAll;
 
   const agentNameMap = getAgentDisplayNames(agents);
+  const agentEnvMap = getAgentEnvMap(agents);
 
   const groupIds = groups.map((g) => g.id);
   const groupMemberCounts = getGroupMemberCounts(groupIds);
@@ -647,6 +666,13 @@ export async function fetchConversationList(options?: {
       id: agent,
       name: agent,
       displayName: agentNameMap[agent] || agent,
+      agentRuntime: agentEnvMap[agent]?.agent_runtime || undefined,
+      projectName: (() => {
+        const p = agentEnvMap[agent]?.project_dir;
+        if (!p) return undefined;
+        const base = path.basename(String(p));
+        return base || undefined;
+      })(),
       pendingCount,
       lastMessage: (lastIsResp ? respMsg : reqMsg)?.slice(0, 50),
       lastTime: (lastIsResp ? lastRespTime : lastReqTime),
@@ -663,4 +689,21 @@ export async function fetchConversationList(options?: {
   });
 
   return items;
+}
+
+export async function fetchAgentEnv(agentId: string): Promise<{
+  agentRuntime?: string;
+  projectName?: string;
+}> {
+  const id = String(agentId || "").trim();
+  if (!id) return {};
+  const env = getAgentEnv(id);
+  const agentRuntime = env?.agent_runtime || undefined;
+  const projectName = (() => {
+    const p = env?.project_dir;
+    if (!p) return undefined;
+    const base = path.basename(String(p));
+    return base || undefined;
+  })();
+  return { agentRuntime, projectName };
 }
