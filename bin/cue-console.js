@@ -6,7 +6,7 @@ let path;
 
 function printHelp() {
   process.stdout.write(
-    `cue-console - Cue Hub console launcher\n\nUsage:\n  cue-console <dev|build|start> [--port <port>] [--host <host>]\n\nExamples:\n  cue-console start --port 3000\n  cue-console start --host 0.0.0.0 --port 3000\n\nNotes:\n  - start will auto-build if needed (when .next is missing)\n`
+    `cue-console - Cue Hub console launcher\n\nUsage:\n  cue-console <dev|build|start> [--port <port>] [--host <host>]\n  cue-console -v|--version\n\nExamples:\n  cue-console -v\n  cue-console start --port 3000\n  cue-console start --host 0.0.0.0 --port 3000\n\nNotes:\n  - start will auto-build if needed (when .next is missing)\n`
   );
 }
 
@@ -18,10 +18,16 @@ function parseArgs(argv) {
     host: undefined,
     passthrough: [],
     showHelp: false,
+    showVersion: false,
   };
 
   if (args.length === 0 || args[0] === "-h" || args[0] === "--help") {
     out.showHelp = true;
+    return out;
+  }
+
+  if (args[0] === "-v" || args[0] === "--version") {
+    out.showVersion = true;
     return out;
   }
 
@@ -51,7 +57,26 @@ async function main() {
     path = await import("node:path");
   }
 
-  const { command, port, host, passthrough } = parseArgs(process.argv.slice(2));
+  const { command, port, host, passthrough, showHelp, showVersion } = parseArgs(process.argv.slice(2));
+
+  if (showHelp) {
+    printHelp();
+    process.exit(0);
+  }
+
+  if (showVersion) {
+    const pkgRoot = path.resolve(__dirname, "..");
+    const pkgPath = path.join(pkgRoot, "package.json");
+    try {
+      const txt = fs.readFileSync(pkgPath, "utf8");
+      const pkg = JSON.parse(txt);
+      process.stdout.write(String(pkg?.version || "") + "\n");
+      process.exit(0);
+    } catch (err) {
+      process.stderr.write(String(err?.stack || err) + "\n");
+      process.exit(1);
+    }
+  }
 
   if (!command) {
     printHelp();
