@@ -2,13 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { getUserConfig, type UserConfig } from "@/lib/actions";
-
-const defaultConfig: UserConfig = {
-  sound_enabled: true,
-  conversation_mode_default: "agent",
-  chat_mode_append_text: "只做分析，不要对代码/文件做任何改动。",
-  pending_request_timeout_ms: 10 * 60 * 1000,
-};
+import { DEFAULT_USER_CONFIG } from "@/lib/user-config";
 
 type ConfigContextValue = {
   config: UserConfig;
@@ -25,7 +19,7 @@ export function useConfig() {
 }
 
 export function ConfigProvider({ children }: { children: ReactNode }) {
-  const [config, setConfig] = useState<UserConfig>(defaultConfig);
+  const [config, setConfig] = useState<UserConfig>(DEFAULT_USER_CONFIG);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,7 +63,26 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
       );
     } catch {
     }
-  }, [config.pending_request_timeout_ms, config.chat_mode_append_text]);
+    try {
+      window.localStorage.setItem(
+        "cue-console:bot_mode_enabled",
+        config.bot_mode_enabled ? "1" : "0"
+      );
+    } catch {
+    }
+    try {
+      window.localStorage.setItem(
+        "cue-console:bot_mode_reply_text",
+        String(config.bot_mode_reply_text || "")
+      );
+    } catch {
+    }
+  }, [
+    config.pending_request_timeout_ms,
+    config.chat_mode_append_text,
+    config.bot_mode_enabled,
+    config.bot_mode_reply_text,
+  ]);
 
   const value = useMemo<ConfigContextValue>(() => ({ config }), [config]);
 

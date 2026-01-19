@@ -12,9 +12,15 @@ import {
   type SetStateAction,
 } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn, getAgentEmoji } from "@/lib/utils";
 import { setAgentDisplayName } from "@/lib/actions";
-import { CornerUpLeft, GripVertical, Plus, Send, Trash2, X } from "lucide-react";
+import { Bot, CornerUpLeft, GripVertical, Plus, Send, Trash2, X } from "lucide-react";
 
 type MentionDraft = {
   userId: string;
@@ -71,6 +77,8 @@ export function ChatComposer({
   setImages,
   setNotice,
   setPreviewImage,
+  botEnabled,
+  onToggleBot,
   handleSend,
   enqueueCurrent,
   queue,
@@ -113,6 +121,8 @@ export function ChatComposer({
   setImages: Dispatch<SetStateAction<{ mime_type: string; base64_data: string; file_name?: string }[]>>;
   setNotice: Dispatch<SetStateAction<string | null>>;
   setPreviewImage: Dispatch<SetStateAction<{ mime_type: string; base64_data: string } | null>>;
+  botEnabled: boolean;
+  onToggleBot: () => Promise<boolean>;
   handleSend: () => void | Promise<void>;
   enqueueCurrent: () => void;
   queue: QueuedMessage[];
@@ -152,6 +162,8 @@ export function ChatComposer({
   }, [onBack]);
 
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [botToggling, setBotToggling] = useState(false);
+  const [botConfirmOpen, setBotConfirmOpen] = useState(false);
   const isComposingRef = useRef(false);
 
   const submitOrQueue = () => {
@@ -250,6 +262,54 @@ export function ChatComposer({
               </div>
             </div>
           )}
+
+          <Dialog open={botConfirmOpen} onOpenChange={setBotConfirmOpen}>
+            <DialogContent className="sm:max-w-110">
+              <DialogHeader>
+                <DialogTitle>Enable bot mode?</DialogTitle>
+              </DialogHeader>
+
+              <div className="text-sm text-muted-foreground space-y-3">
+                <p>
+                  Bot mode will automatically reply to <span className="text-foreground font-medium">cue</span> requests
+                  in this conversation.
+                </p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Only affects the current {type === "group" ? "group" : "agent"} conversation.</li>
+                  <li>May immediately reply to currently pending cue requests.</li>
+                  <li>Does not reply to pause confirmations.</li>
+                  <li>You can turn it off anytime.</li>
+                </ul>
+              </div>
+
+              <div className="mt-4 flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={botToggling}
+                  onClick={() => setBotConfirmOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  disabled={botToggling}
+                  onClick={async () => {
+                    if (botToggling) return;
+                    setBotToggling(true);
+                    try {
+                      await onToggleBot();
+                      setBotConfirmOpen(false);
+                    } finally {
+                      setBotToggling(false);
+                    }
+                  }}
+                >
+                  {botToggling ? "Enabling…" : "Enable"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           {/* Image Preview */}
           {images.length > 0 && (
@@ -614,6 +674,48 @@ export function ChatComposer({
               >
                 Queue
               </Button>
+
+              <div className="relative group">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  disabled={busy || botToggling}
+                  className={cn(
+                    "relative h-9 w-9 rounded-2xl",
+                    "hover:bg-white/40",
+                    botEnabled ? "text-primary" : "text-muted-foreground",
+                    (busy || botToggling) && "opacity-60 cursor-not-allowed"
+                  )}
+                  onClick={async () => {
+                    if (busy || botToggling) return;
+                    if (!botEnabled) {
+                      setBotConfirmOpen(true);
+                      return;
+                    }
+                    setBotToggling(true);
+                    try {
+                      await onToggleBot();
+                    } finally {
+                      setBotToggling(false);
+                    }
+                  }}
+                  aria-label={botEnabled ? "Stop bot" : "Start bot"}
+                  title={botToggling ? "Turning…" : botEnabled ? "Stop bot" : "Start bot"}
+                >
+                  {botEnabled && (
+                    <span className="pointer-events-none absolute inset-0 rounded-xl">
+                      <span className="absolute inset-0 rounded-2xl bg-primary/15 blur-md animate-pulse" />
+                    </span>
+                  )}
+                  <Bot
+                    className={cn(
+                      "relative z-10 h-5 w-5",
+                      botEnabled && "drop-shadow-[0_0_12px_rgba(99,102,241,0.45)]"
+                    )}
+                  />
+                </Button>
+              </div>
             </div>
 
             <Button

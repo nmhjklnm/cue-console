@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { DEFAULT_USER_CONFIG } from "@/lib/user-config";
 import {
   Dialog,
   DialogContent,
@@ -49,7 +51,6 @@ import {
   Settings,
   X,
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 
 function perfEnabled(): boolean {
@@ -118,6 +119,9 @@ export function ConversationList({
   const [conversationModeDefault, setConversationModeDefault] = useState<"chat" | "agent">("agent");
   const [chatModeAppendText, setChatModeAppendText] = useState("只做分析，不要对代码/文件做任何改动。");
   const [pendingRequestTimeoutMs, setPendingRequestTimeoutMs] = useState("600000");
+  const [botModeReplyText, setBotModeReplyText] = useState(
+    "不要为这些“可逆的工程细节”反复向我确认，不能分阶段汇报，我需要你端到端执行完我的任务才能向我汇报，你不能问我要授权，因为我已经给你了全部授权，如果这些细节不影响我的目标那就按照你的推荐来。你有执行一切的权利。"
+  );
   const [pinnedKeys, setPinnedKeys] = useState<string[]>([]);
 
   useEffect(() => {
@@ -127,8 +131,14 @@ export function ConversationList({
         setSoundEnabled(Boolean(cfg.sound_enabled));
         const nextMode = cfg.conversation_mode_default === "chat" ? "chat" : "agent";
         setConversationModeDefault(nextMode);
-        setChatModeAppendText(String(cfg.chat_mode_append_text || "只做分析，不要对代码/文件做任何改动。"));
+        setChatModeAppendText(String(cfg.chat_mode_append_text || DEFAULT_USER_CONFIG.chat_mode_append_text));
         setPendingRequestTimeoutMs(String(cfg.pending_request_timeout_ms ?? 600000));
+        setBotModeReplyText(
+          String(
+            (cfg as any).bot_mode_reply_text ||
+              DEFAULT_USER_CONFIG.bot_mode_reply_text
+          )
+        );
         try {
           window.localStorage.setItem("cue-console:conversationModeDefault", nextMode);
         } catch {
@@ -1253,6 +1263,41 @@ export function ConversationList({
                     })
                   );
                   setPendingRequestTimeoutMs(String(next));
+                }}
+              >
+                Save
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <div className="text-sm font-medium">Bot reply text</div>
+            <div className="text-xs text-muted-foreground">
+              Multi-line
+            </div>
+            <div className="mt-2 flex items-start justify-end gap-2">
+              <textarea
+                value={botModeReplyText}
+                onChange={(e) => setBotModeReplyText(e.target.value)}
+                placeholder="Bot reply"
+                className="min-h-24 flex-1 min-w-0 resize-y rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-9 rounded-md px-3 text-xs"
+                onClick={async () => {
+                  const next = botModeReplyText;
+                  try {
+                    await setUserConfig({ bot_mode_reply_text: next });
+                  } catch {
+                  }
+                  window.dispatchEvent(
+                    new CustomEvent("cue-console:configUpdated", {
+                      detail: { bot_mode_reply_text: next },
+                    })
+                  );
                 }}
               >
                 Save

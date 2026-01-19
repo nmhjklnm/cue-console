@@ -25,6 +25,7 @@ import {
   submitResponse,
   cancelRequest,
   batchRespond,
+  processBotTick,
   type CueRequest,
 } from "@/lib/actions";
 import { ChatComposer } from "@/components/chat-composer";
@@ -77,6 +78,12 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
   const deferredInput = useDeferredValue(input);
   const imagesRef = useRef(images);
 
+  const botStorageKey = useMemo(() => {
+    return `cue-console:botEnabled:${type}:${id}`;
+  }, [type, id]);
+
+  const [botEnabled, setBotEnabled] = useState(false);
+
   const { soundEnabled, setSoundEnabled, playDing } = useAudioNotification();
 
   const {
@@ -102,6 +109,17 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
   const [isAtBottom, setIsAtBottom] = useState(true);
 
   const [composerPadPx, setComposerPadPx] = useState(36 * 4);
+
+  const botHolderIdRef = useRef<string>(
+    (() => {
+      try {
+        return globalThis.crypto?.randomUUID?.() || `bot-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      } catch {
+        return `bot-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      }
+    })()
+  );
+  const botTickBusyRef = useRef(false);
 
   const nextCursorRef = useRef<string | null>(null);
   const loadingMoreRef = useRef(false);
@@ -206,6 +224,85 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     perfEnabled,
     setError,
   });
+
+  const triggerBotTickOnce = useCallback(async () => {
+    if (document.visibilityState !== "visible") return;
+    if (botTickBusyRef.current) return;
+    botTickBusyRef.current = true;
+    try {
+      const res = await processBotTick({
+        holderId: botHolderIdRef.current,
+        convType: type,
+        convId: id,
+        limit: 80,
+      });
+      if (res.success && res.replied > 0) {
+        await refreshLatest();
+      }
+    } catch {
+    } finally {
+      botTickBusyRef.current = false;
+    }
+  }, [id, refreshLatest, type]);
+
+  const toggleBot = useCallback(async (): Promise<boolean> => {
+    const prev = botEnabled;
+    const next = !prev;
+    setBotEnabled(next);
+    try {
+      window.localStorage.setItem(botStorageKey, next ? "1" : "0");
+      if (next) void triggerBotTickOnce();
+      return next;
+    } catch {
+      setBotEnabled(prev);
+      setNotice("Failed to toggle bot");
+      return prev;
+    }
+  }, [botEnabled, botStorageKey, setNotice, triggerBotTickOnce]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(botStorageKey);
+      setBotEnabled(raw === "1");
+    } catch {
+      setBotEnabled(false);
+    }
+  }, [botStorageKey]);
+
+  useEffect(() => {
+    if (!botEnabled) return;
+
+    let cancelled = false;
+
+    const tick = async () => {
+      if (cancelled) return;
+      if (document.visibilityState !== "visible") return;
+      if (botTickBusyRef.current) return;
+      botTickBusyRef.current = true;
+      try {
+        const res = await processBotTick({
+          holderId: botHolderIdRef.current,
+          convType: type,
+          convId: id,
+          limit: 80,
+        });
+        if (cancelled) return;
+        if (res.success && res.replied > 0) {
+          await refreshLatest();
+        }
+      } catch {
+      } finally {
+        botTickBusyRef.current = false;
+      }
+    };
+
+    void tick();
+    const interval = setInterval(() => void tick(), 2500);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [botEnabled, id, refreshLatest, type]);
 
 
   const handleTitleChange = async (newTitle: string) => {
@@ -666,6 +763,8 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
         setImages={setImages}
         setNotice={setNotice}
         setPreviewImage={setPreviewImage}
+        botEnabled={botEnabled}
+        onToggleBot={toggleBot}
         handleSend={send}
         enqueueCurrent={enqueueCurrent}
         queue={queue}
