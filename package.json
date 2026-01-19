@@ -1,6 +1,6 @@
 {
   "name": "cue-console",
-  "version": "0.1.20",
+  "version": "0.1.21",
   "description": "Cue Hub console launcher (Next.js UI)",
   "license": "Apache-2.0",
   "keywords": ["mcp", "cue", "console", "nextjs"],
