@@ -681,150 +681,86 @@ export function ChatComposer({
                 Queue
               </Button>
 
-              <div className="relative group">
-                <button
-                  type="button"
-                  disabled={busy || botToggling || !botLoaded}
-                  className={cn(
-                    "relative h-10 w-10 rounded-2xl transition-all duration-300",
-                    "disabled:cursor-not-allowed",
-                    botEnabled
-                      ? "bg-gradient-to-br from-cyan-500/20 via-blue-500/20 to-purple-500/20"
-                      : botLoadError
-                        ? "bg-gradient-to-br from-red-500/15 via-orange-500/15 to-red-500/15"
-                        : "bg-white/5 hover:bg-white/10",
-                    (busy || botToggling) && "opacity-50"
-                  )}
-                  onClick={async () => {
-                    if (busy || botToggling) return;
-                    if (!botLoaded) return;
-                    if (!botEnabled) {
-                      setBotConfirmOpen(true);
-                      return;
-                    }
-                    setBotToggling(true);
-                    try {
-                      await onToggleBot();
-                    } finally {
-                      setBotToggling(false);
-                    }
-                  }}
-                  aria-label={botEnabled ? "Stop bot" : "Start bot"}
-                  title={
-                    !botLoaded
-                      ? "Bot status loading…"
-                      : botToggling
-                        ? "Turning…"
-                        : botLoadError
-                          ? "Bot state sync error (may still be enabled in background)"
-                          : botEnabled
-                            ? "Stop bot"
-                            : "Start bot"
+              <button
+                type="button"
+                disabled={busy || botToggling || !botLoaded}
+                className={cn(
+                  "relative h-8 px-3 rounded-xl transition-all duration-200",
+                  "flex items-center gap-1.5",
+                  "disabled:cursor-not-allowed disabled:opacity-50",
+                  botEnabled
+                    ? "bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/25"
+                    : botLoadError
+                      ? "bg-red-500/10 hover:bg-red-500/20 text-red-500 ring-1 ring-red-500/30"
+                      : "bg-white/10 hover:bg-white/20 text-muted-foreground"
+                )}
+                onClick={async () => {
+                  if (busy || botToggling) return;
+                  if (!botLoaded) return;
+                  if (!botEnabled) {
+                    setBotConfirmOpen(true);
+                    return;
                   }
-                >
-                  {/* Outer glow ring - enabled state */}
-                  {botEnabled && (
-                    <>
-                      <span className="pointer-events-none absolute -inset-[2px] rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-500 opacity-60 blur-sm animate-pulse" />
-                      <span className="pointer-events-none absolute -inset-[1px] rounded-2xl bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 opacity-40" />
-                    </>
-                  )}
-                  
-                  {/* Error state ring */}
-                  {botLoadError && (
-                    <span className="pointer-events-none absolute -inset-[1px] rounded-2xl bg-gradient-to-r from-red-500 to-orange-500 opacity-50" />
-                  )}
-                  
-                  {/* Inner container */}
-                  <span className={cn(
-                    "absolute inset-[1px] rounded-2xl flex items-center justify-center",
-                    "backdrop-blur-sm",
-                    botEnabled
-                      ? "bg-gradient-to-br from-slate-900/90 via-slate-800/90 to-slate-900/90"
-                      : botLoadError
-                        ? "bg-gradient-to-br from-slate-900/80 via-red-950/50 to-slate-900/80"
-                        : "bg-slate-900/40"
-                  )}>
-                    {/* Scanline effect for enabled state */}
-                    {botEnabled && (
-                      <span className="pointer-events-none absolute inset-0 rounded-2xl overflow-hidden">
-                        <span 
-                          className="absolute inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent"
-                          style={{
-                            animation: 'scan 2s ease-in-out infinite',
-                            top: '0%',
-                          }}
-                        />
-                      </span>
-                    )}
-                    
-                    {/* Loading indicator */}
-                    {!botLoaded && (
-                      <span className="pointer-events-none absolute -right-1 -top-1 flex h-3 w-3">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-3 w-3 bg-slate-500"></span>
-                      </span>
-                    )}
-                    
-                    {/* Error indicator */}
-                    {botLoaded && botLoadError && (
-                      <span className="pointer-events-none absolute -right-1 -top-1 flex h-3 w-3">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600 ring-1 ring-red-400"></span>
-                      </span>
-                    )}
-                    
-                    {/* Bot icon */}
-                    <Bot
-                      className={cn(
-                        "relative z-10 h-5 w-5 transition-all duration-300",
-                        botEnabled
-                          ? "text-cyan-300 drop-shadow-[0_0_8px_rgba(103,232,249,0.8)]"
-                          : botLoadError
-                            ? "text-red-400"
-                            : "text-slate-400"
-                      )}
-                      strokeWidth={botEnabled ? 2.5 : 2}
-                    />
-                  </span>
-                  
-                  {/* Toggling animation overlay */}
-                  {botToggling && (
-                    <span className="pointer-events-none absolute inset-0 rounded-2xl overflow-hidden">
-                      <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
-                    </span>
-                  )}
-                </button>
-                
-                {/* Tooltip on hover */}
-                <span className={cn(
-                  "pointer-events-none absolute -top-9 left-1/2 -translate-x-1/2 px-2 py-1 rounded-lg",
-                  "bg-slate-900/95 text-white text-xs font-medium whitespace-nowrap",
-                  "opacity-0 group-hover:opacity-100 transition-opacity duration-200",
-                  "backdrop-blur-sm border border-white/10"
-                )}>
-                  {!botLoaded
-                    ? "Loading…"
+                  setBotToggling(true);
+                  try {
+                    await onToggleBot();
+                  } finally {
+                    setBotToggling(false);
+                  }
+                }}
+                aria-label={botEnabled ? "Stop bot" : "Start bot"}
+                title={
+                  !botLoaded
+                    ? "Bot status loading…"
                     : botToggling
-                      ? "Switching…"
+                      ? "Turning…"
                       : botLoadError
-                        ? "Sync Error"
+                        ? "Bot state sync error"
                         : botEnabled
-                          ? "Bot Active"
-                          : "Start Bot"}
+                          ? "Bot is active - click to stop"
+                          : "Start bot mode"
+                }
+              >
+                {/* Custom SVG icon */}
+                <svg
+                  className={cn(
+                    "w-4 h-4 transition-transform duration-200",
+                    botEnabled && "scale-110"
+                  )}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  {/* Robot head */}
+                  <rect x="6" y="8" width="12" height="10" rx="2" />
+                  {/* Antenna */}
+                  <path d="M12 8V5" />
+                  <circle cx="12" cy="4" r="1" fill="currentColor" />
+                  {/* Eyes */}
+                  <circle cx="9.5" cy="12" r="1" fill="currentColor" />
+                  <circle cx="14.5" cy="12" r="1" fill="currentColor" />
+                  {/* Mouth */}
+                  <path d="M9 15h6" />
+                  {/* Arms */}
+                  <path d="M6 13H4" />
+                  <path d="M20 13h-2" />
+                </svg>
+                
+                <span className="text-xs font-medium">
+                  {botToggling ? "..." : botEnabled ? "ON" : "Bot"}
                 </span>
-              </div>
-              
-              <style jsx>{`
-                @keyframes scan {
-                  0%, 100% { top: 0%; opacity: 0; }
-                  50% { top: 100%; opacity: 1; }
-                }
-                @keyframes shimmer {
-                  0% { transform: translateX(-100%); }
-                  100% { transform: translateX(100%); }
-                }
-              `}</style>
+                
+                {/* Status indicator dot */}
+                {!botLoaded && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+                )}
+                {botLoadError && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                )}
+              </button>
             </div>
 
             <Button
