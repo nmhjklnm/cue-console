@@ -121,6 +121,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     })()
   );
   const botTickBusyRef = useRef(false);
+  const currentConvRef = useRef({ type, id });
 
   const nextCursorRef = useRef<string | null>(null);
   const loadingMoreRef = useRef(false);
@@ -305,17 +306,25 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
 
   useEffect(() => {
     let cancelled = false;
+    // Update current conversation ref
+    currentConvRef.current = { type, id };
+    
+    // Immediately reset bot state when switching conversations
+    setBotEnabled(false);
     setBotLoaded(false);
     setBotLoadError(null);
+    botTickBusyRef.current = false;
+    
     void (async () => {
       try {
         const res = await fetchBotEnabled(type, id);
-        if (cancelled) return;
+        // Check if conversation hasn't changed during async operation
+        if (cancelled || currentConvRef.current.type !== type || currentConvRef.current.id !== id) return;
         setBotEnabled(Boolean(res.enabled));
         setBotLoaded(true);
         setBotLoadError(null);
       } catch {
-        if (cancelled) return;
+        if (cancelled || currentConvRef.current.type !== type || currentConvRef.current.id !== id) return;
         setBotEnabled(false);
         setBotLoaded(true);
         setBotLoadError("Failed to sync bot state");
@@ -325,7 +334,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [id, type]);
+  }, [id, type, setNotice]);
 
   useEffect(() => {
     if (!botLoaded) return;
@@ -336,12 +345,13 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
       if (document.visibilityState !== "visible") return;
       try {
         const res = await fetchBotEnabled(type, id);
-        if (cancelled) return;
+        // Check if conversation hasn't changed during async operation
+        if (cancelled || currentConvRef.current.type !== type || currentConvRef.current.id !== id) return;
         const next = Boolean(res.enabled);
         setBotEnabled(next);
         setBotLoadError(null);
       } catch {
-        if (cancelled) return;
+        if (cancelled || currentConvRef.current.type !== type || currentConvRef.current.id !== id) return;
         setBotLoadError("Failed to sync bot state");
       }
     };
