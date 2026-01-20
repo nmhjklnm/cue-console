@@ -209,6 +209,12 @@
     background-size: 140px 140px;
   }
 
+  /* Text wrapping utilities for mobile responsiveness */
+  .overflow-wrap-anywhere {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
   /* Markdown document-flow: harden list/paragraph spacing to avoid regressions */
   .md-flow {
     max-width: 100%;

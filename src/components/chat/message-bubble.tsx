@@ -126,19 +126,19 @@ export function MessageBubble({
       ) : (
         <span className="h-9 w-9 shrink-0" />
       )}
-      <div className="flex-1 min-w-0 overflow-hidden">
+      <div className="flex-1 min-w-0">
         {(showName ?? true) && (showAgent || displayName) && (
           <p className="mb-1 text-xs text-muted-foreground truncate">{displayName}</p>
         )}
         <div
           className={cn(
-            "rounded-3xl p-3 sm:p-4 max-w-full flex-1 basis-0 min-w-0 overflow-hidden",
+            "rounded-3xl p-3 sm:p-4 w-full",
             "glass-surface-soft glass-noise",
             isPending ? "ring-1 ring-ring/25" : "ring-1 ring-white/25"
           )}
           style={{ clipPath: "inset(0 round 1rem)", maxWidth: cardMaxWidth }}
         >
-          <div className="text-sm wrap-anywhere overflow-hidden min-w-0">
+          <div className="text-sm overflow-wrap-anywhere">
             <MarkdownRenderer>{request.prompt || ""}</MarkdownRenderer>
           </div>
           <PayloadCard

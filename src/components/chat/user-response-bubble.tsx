@@ -103,7 +103,7 @@ export function UserResponseBubble({
     return (
       <div className="flex justify-end gap-3 max-w-full min-w-0">
         <div
-          className="rounded-3xl p-3 sm:p-4 max-w-full flex-1 basis-0 min-w-0 sm:max-w-215 sm:flex-none sm:w-fit overflow-hidden glass-surface-soft glass-noise ring-1 ring-white/25"
+          className="rounded-3xl p-3 sm:p-4 w-full sm:max-w-215 sm:w-fit glass-surface-soft glass-noise ring-1 ring-white/25"
           style={{
             clipPath: "inset(0 round 1rem)",
             maxWidth: showAvatar ? "calc(100% - 3rem)" : "100%",
@@ -119,14 +119,14 @@ export function UserResponseBubble({
   return (
     <div className={cn("flex justify-end gap-3 max-w-full min-w-0", compact && "gap-2")}>
       <div
-        className="rounded-3xl p-3 sm:p-4 max-w-full flex-1 basis-0 min-w-0 sm:max-w-215 sm:flex-none sm:w-fit overflow-hidden glass-surface-soft glass-noise ring-1 ring-white/25"
+        className="rounded-3xl p-3 sm:p-4 w-full sm:max-w-215 sm:w-fit glass-surface-soft glass-noise ring-1 ring-white/25"
         style={{
           clipPath: "inset(0 round 1rem)",
           maxWidth: showAvatar ? "calc(100% - 3rem)" : "100%",
         }}
       >
         {displayText && (
-          <div className="text-sm wrap-anywhere overflow-hidden min-w-0">
+          <div className="text-sm overflow-wrap-anywhere">
             {parsed.mentions && parsed.mentions.length > 0 ? (
               <p className="whitespace-pre-wrap">
                 {renderTextWithMentions(displayText, parsed.mentions)}
