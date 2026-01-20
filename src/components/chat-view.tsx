@@ -80,6 +80,8 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
   const imagesRef = useRef(images);
 
   const [botEnabled, setBotEnabled] = useState(false);
+  const [botLoaded, setBotLoaded] = useState(false);
+  const [botLoadError, setBotLoadError] = useState<string | null>(null);
 
   const { soundEnabled, setSoundEnabled, playDing } = useAudioNotification();
 
@@ -282,11 +284,16 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
   }, [id, refreshLatest, setNotice, type]);
 
   const toggleBot = useCallback(async (): Promise<boolean> => {
+    if (!botLoaded) {
+      setNotice("Bot status is still loading");
+      return botEnabled;
+    }
     const prev = botEnabled;
     const next = !prev;
     try {
       await updateBotEnabled(type, id, next);
       setBotEnabled(next);
+      setBotLoadError(null);
       if (next) void triggerBotTickOnce();
       return next;
     } catch {
@@ -294,24 +301,63 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
       setNotice("Failed to toggle bot");
       return prev;
     }
-  }, [botEnabled, id, setNotice, triggerBotTickOnce, type]);
+  }, [botEnabled, botLoaded, id, setNotice, triggerBotTickOnce, type]);
 
   useEffect(() => {
     let cancelled = false;
+    setBotLoaded(false);
+    setBotLoadError(null);
     void (async () => {
       try {
         const res = await fetchBotEnabled(type, id);
         if (cancelled) return;
         setBotEnabled(Boolean(res.enabled));
+        setBotLoaded(true);
+        setBotLoadError(null);
       } catch {
         if (cancelled) return;
         setBotEnabled(false);
+        setBotLoaded(true);
+        setBotLoadError("Failed to sync bot state");
+        setNotice("Failed to sync bot state (may still be enabled in background)");
       }
     })();
     return () => {
       cancelled = true;
     };
   }, [id, type]);
+
+  useEffect(() => {
+    if (!botLoaded) return;
+    let cancelled = false;
+
+    const tick = async () => {
+      if (cancelled) return;
+      if (document.visibilityState !== "visible") return;
+      try {
+        const res = await fetchBotEnabled(type, id);
+        if (cancelled) return;
+        const next = Boolean(res.enabled);
+        setBotEnabled(next);
+        setBotLoadError(null);
+      } catch {
+        if (cancelled) return;
+        setBotLoadError("Failed to sync bot state");
+      }
+    };
+
+    const interval = setInterval(() => void tick(), 3000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void tick();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      clearInterval(interval);
+    };
+  }, [botLoaded, id, type]);
 
   useEffect(() => {
     if (!botEnabled) return;
@@ -802,7 +848,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
         onBack={onBack}
         busy={busy}
         canSend={canSend}
-        hasPendingRequests={hasPendingRequests}
+        hasPendingRequests={pendingRequests.length > 0}
         input={input}
         conversationMode={conversationMode}
         setConversationMode={setConversationMode}
@@ -811,8 +857,10 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
         setImages={setImages}
         setPreviewImage={setPreviewImage}
         botEnabled={botEnabled}
+        botLoaded={botLoaded}
+        botLoadError={botLoadError}
         onToggleBot={toggleBot}
-        handleSend={send}
+        handleSend={() => void send()}
         enqueueCurrent={enqueueCurrent}
         queue={queue}
         removeQueued={removeQueued}
@@ -834,7 +882,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
         pointerInMentionRef={pointerInMentionRef}
         mentionScrollTopRef={mentionScrollTopRef}
         closeMention={closeMention}
-        insertMention={insertMention}
+        insertMention={insertMentionAtCursor}
         updateMentionFromCursor={updateMentionFromCursor}
         draftMentions={mentions}
         setDraftMentions={setMentions}

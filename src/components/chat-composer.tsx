@@ -78,6 +78,8 @@ export function ChatComposer({
   setImages,
   setPreviewImage,
   botEnabled,
+  botLoaded,
+  botLoadError,
   onToggleBot,
   handleSend,
   enqueueCurrent,
@@ -121,6 +123,8 @@ export function ChatComposer({
   setImages: Dispatch<SetStateAction<{ mime_type: string; base64_data: string; file_name?: string }[]>>;
   setPreviewImage: Dispatch<SetStateAction<{ mime_type: string; base64_data: string } | null>>;
   botEnabled: boolean;
+  botLoaded: boolean;
+  botLoadError: string | null;
   onToggleBot: () => Promise<boolean>;
   handleSend: () => void | Promise<void>;
   enqueueCurrent: () => void;
@@ -682,15 +686,20 @@ export function ChatComposer({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  disabled={busy || botToggling}
+                  disabled={busy || botToggling || !botLoaded}
                   className={cn(
                     "relative h-9 w-9 rounded-2xl",
                     "hover:bg-white/40",
-                    botEnabled ? "text-primary" : "text-muted-foreground",
+                    botEnabled
+                      ? "text-primary ring-2 ring-primary/40 bg-primary/10"
+                      : botLoadError
+                        ? "text-destructive ring-2 ring-destructive/40 bg-destructive/10"
+                        : "text-muted-foreground",
                     (busy || botToggling) && "opacity-60 cursor-not-allowed"
                   )}
                   onClick={async () => {
                     if (busy || botToggling) return;
+                    if (!botLoaded) return;
                     if (!botEnabled) {
                       setBotConfirmOpen(true);
                       return;
@@ -703,12 +712,28 @@ export function ChatComposer({
                     }
                   }}
                   aria-label={botEnabled ? "Stop bot" : "Start bot"}
-                  title={botToggling ? "Turning…" : botEnabled ? "Stop bot" : "Start bot"}
+                  title={
+                    !botLoaded
+                      ? "Bot status loading…"
+                      : botToggling
+                        ? "Turning…"
+                        : botLoadError
+                          ? "Bot state sync error (may still be enabled in background)"
+                          : botEnabled
+                            ? "Stop bot"
+                            : "Start bot"
+                  }
                 >
                   {botEnabled && (
                     <span className="pointer-events-none absolute inset-0 rounded-xl">
                       <span className="absolute inset-0 rounded-2xl bg-primary/15 blur-md animate-pulse" />
                     </span>
+                  )}
+                  {!botLoaded && (
+                    <span className="pointer-events-none absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-muted-foreground/70" />
+                  )}
+                  {botLoaded && botLoadError && (
+                    <span className="pointer-events-none absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-destructive" />
                   )}
                   <Bot
                     className={cn(

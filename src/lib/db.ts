@@ -8,16 +8,41 @@ import type { UserResponse, Group } from "./types";
 const DB_PATH = join(homedir(), ".cue", "cue.db");
 
 let db: Database.Database | null = null;
+let lastCheckpoint = 0;
 
 export function getDb(): Database.Database {
   if (!db) {
     mkdirSync(join(homedir(), ".cue"), { recursive: true });
     db = new Database(DB_PATH);
     db.pragma("journal_mode = WAL");
+    db.pragma("wal_autocheckpoint = 1000");
     initTables();
   }
 
+  // Periodic WAL checkpoint to prevent unbounded growth
+  const now = Date.now();
+  if (now - lastCheckpoint > 60000) {
+    lastCheckpoint = now;
+    try {
+      db.pragma("wal_checkpoint(PASSIVE)");
+    } catch {
+      // ignore checkpoint errors
+    }
+  }
+
   return db;
+}
+
+export function closeDb(): void {
+  if (db) {
+    try {
+      db.pragma("wal_checkpoint(TRUNCATE)");
+      db.close();
+    } catch {
+      // ignore
+    }
+    db = null;
+  }
 }
 
 function filesRootDir(): string {

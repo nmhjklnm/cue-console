@@ -6,6 +6,7 @@ import { ChatView } from "@/components/chat-view";
 import { CreateGroupDialog } from "@/components/create-group-dialog";
 import { MessageCircle } from "lucide-react";
 import { claimWorkerLease, fetchBotEnabledConversations, processBotTick, processQueueTick } from "@/lib/actions";
+import "@/lib/perf-monitor"; // Auto-starts if enabled in localStorage
 
 export default function Home() {
   const [selectedId, setSelectedId] = useState<string | null>(null);

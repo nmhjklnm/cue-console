@@ -332,14 +332,19 @@ export function ConversationList({
     };
   }, [ensureAvatarUrl, items]);
 
+  const loadDataRef = useRef(loadData);
+  useEffect(() => {
+    loadDataRef.current = loadData;
+  }, [loadData]);
+
   useEffect(() => {
     const t0 = setTimeout(() => {
-      void loadData();
+      void loadDataRef.current();
     }, 0);
 
     const tick = () => {
       if (document.visibilityState !== "visible") return;
-      void loadData();
+      void loadDataRef.current();
     };
 
     const interval = setInterval(tick, 10_000);
@@ -355,7 +360,7 @@ export function ConversationList({
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [loadData]);
+  }, []);
 
   useEffect(() => {
     if (!menu.open) return;
@@ -498,6 +503,16 @@ export function ConversationList({
 
   const dismissUndoToast = useCallback(() => {
     setPendingDelete([]);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      // Clean up all pending delete timers on unmount
+      for (const timer of deleteTimersRef.current.values()) {
+        clearTimeout(timer);
+      }
+      deleteTimersRef.current.clear();
+    };
   }, []);
 
   useEffect(() => {

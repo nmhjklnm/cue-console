@@ -198,10 +198,15 @@ export function useMessageQueue({
     return () => window.removeEventListener("cue-console:queueUpdated", onQueueUpdated);
   }, [refreshQueue]);
 
+  const refreshQueueRef = useRef(refreshQueue);
+  useEffect(() => {
+    refreshQueueRef.current = refreshQueue;
+  }, [refreshQueue]);
+
   useEffect(() => {
     const tick = () => {
       if (document.visibilityState !== "visible") return;
-      void refreshQueue();
+      void refreshQueueRef.current();
     };
 
     const interval = setInterval(tick, 10_000);
@@ -216,7 +221,7 @@ export function useMessageQueue({
       document.removeEventListener("visibilitychange", onVisibilityChange);
       clearInterval(interval);
     };
-  }, [refreshQueue]);
+  }, []);
 
   return {
     queue,
