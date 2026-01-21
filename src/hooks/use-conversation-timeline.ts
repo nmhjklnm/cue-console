@@ -211,7 +211,7 @@ export function useConversationTimeline({
       void refreshLatestRef.current();
     };
 
-    const interval = setInterval(tick, 3000);
+    const interval = setInterval(tick, 5000);
 
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") tick();

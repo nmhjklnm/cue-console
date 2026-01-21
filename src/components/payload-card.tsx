@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, memo } from "react";
 
 import type { OnPasteChoice } from "./payload-card/types";
 import { PayloadChoiceView } from "./payload-card/choice-view";
@@ -9,7 +9,7 @@ import { PayloadFormView } from "./payload-card/form-view";
 import type { ParsedViewModel } from "./payload-card/types";
 import { parsePayload } from "./payload-card/utils";
 
-export function PayloadCard({
+const PayloadCardComponent = ({
   raw,
   disabled,
   onPasteChoice,
@@ -21,7 +21,7 @@ export function PayloadCard({
   onPasteChoice?: OnPasteChoice;
   onSubmitConfirm?: (text: string, cancelled: boolean) => void | Promise<void>;
   selectedLines?: Set<string>;
-}) {
+}) => {
   const vm = useMemo<ParsedViewModel | null>(() => parsePayload(raw), [raw]);
 
   if (!vm) return null;
@@ -72,4 +72,12 @@ export function PayloadCard({
       selectedLines={selectedLines}
     />
   );
-}
+};
+
+export const PayloadCard = memo(PayloadCardComponent, (prev, next) => {
+  return (
+    prev.raw === next.raw &&
+    prev.disabled === next.disabled &&
+    prev.selectedLines === next.selectedLines
+  );
+});

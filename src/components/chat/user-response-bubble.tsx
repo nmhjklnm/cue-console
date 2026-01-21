@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo, type ReactNode, memo, type FC } from "react";
 import { cn, formatFullTime } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import type { CueResponse } from "@/lib/actions";
@@ -12,12 +12,12 @@ interface UserResponseBubbleProps {
   onPreview?: (img: { mime_type: string; base64_data: string }) => void;
 }
 
-export function UserResponseBubble({
+const UserResponseBubbleComponent: FC<UserResponseBubbleProps> = ({
   response,
   showAvatar = true,
   compact = false,
   onPreview,
-}: UserResponseBubbleProps) {
+}) => {
   const { config } = useConfig();
   const parsed = JSON.parse(response.response_json || "{}") as {
     text?: string;
@@ -198,4 +198,14 @@ export function UserResponseBubble({
       )}
     </div>
   );
-}
+};
+
+export const UserResponseBubble = memo(UserResponseBubbleComponent, (prev, next) => {
+  return (
+    prev.response.id === next.response.id &&
+    prev.response.response_json === next.response.response_json &&
+    prev.response.cancelled === next.response.cancelled &&
+    prev.compact === next.compact &&
+    prev.showAvatar === next.showAvatar
+  );
+});

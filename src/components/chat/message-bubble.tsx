@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, memo, type FC } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn, getAgentEmoji, formatFullTime, getWaitingDuration } from "@/lib/utils";
@@ -27,7 +27,7 @@ interface MessageBubbleProps {
   onCancel?: () => void;
 }
 
-export function MessageBubble({
+const MessageBubbleComponent: FC<MessageBubbleProps> = ({
   request,
   showAgent,
   agentNameMap,
@@ -44,7 +44,7 @@ export function MessageBubble({
   onMentionAgent,
   onReply,
   onCancel,
-}: MessageBubbleProps) {
+}: MessageBubbleProps) => {
   const isPending = request.status === "PENDING";
   const [copied, setCopied] = useState(false);
 
@@ -214,4 +214,18 @@ export function MessageBubble({
       </div>
     </div>
   );
-}
+};
+
+export const MessageBubble = memo(MessageBubbleComponent, (prev, next) => {
+  return (
+    prev.request.request_id === next.request.request_id &&
+    prev.request.status === next.request.status &&
+    prev.request.prompt === next.request.prompt &&
+    prev.request.payload === next.request.payload &&
+    prev.disabled === next.disabled &&
+    prev.currentInput === next.currentInput &&
+    prev.compact === next.compact &&
+    prev.showName === next.showName &&
+    prev.showAvatar === next.showAvatar
+  );
+});

@@ -13,11 +13,13 @@ import {
   getAgentDisplayNames,
   getAgentEnv,
   getAgentEnvMap,
+  getAgentsByProjectDir,
   upsertAgentDisplayName,
   getAgentLastRequest,
   getPendingCountByAgent,
   getAgentTimeline,
   sendResponse,
+  deleteRequest,
   archiveConversation,
   unarchiveConversation,
   deleteConversation,
@@ -452,8 +454,7 @@ export async function submitResponse(
 
 export async function cancelRequest(requestId: string) {
   try {
-    const response: UserResponse = { text: "" };
-    sendResponse(requestId, response, true);
+    deleteRequest(requestId);
     return { success: true } as const;
   } catch (e) {
     return {

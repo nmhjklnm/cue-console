@@ -979,6 +979,16 @@ export function getAgentEnv(agentId: string): AgentEnv | undefined {
   return row;
 }
 
+export function getAgentsByProjectDir(projectDir: string): string[] {
+  if (!projectDir) return [];
+  const rows = getDb()
+    .prepare(
+      `SELECT DISTINCT agent_id FROM agent_envs WHERE project_dir = ? ORDER BY updated_at DESC`
+    )
+    .all(projectDir) as { agent_id: string }[];
+  return rows.map(r => r.agent_id);
+}
+
 // Type definitions
 export interface CueRequest {
   id: number;
@@ -1443,6 +1453,25 @@ export function sendResponse(
      SET status = ? 
      WHERE request_id = ?`
   ).run(cancelled ? "CANCELLED" : "COMPLETED", requestId);
+}
+
+export function deleteRequest(requestId: string): void {
+  const db = getDb();
+  
+  // First get response ID if exists
+  const respRow = db
+    .prepare(`SELECT id FROM cue_responses WHERE request_id = ?`)
+    .get(requestId) as { id: number } | undefined;
+  
+  if (respRow) {
+    // Delete response files
+    db.prepare(`DELETE FROM cue_response_files WHERE response_id = ?`).run(respRow.id);
+    // Delete response
+    db.prepare(`DELETE FROM cue_responses WHERE id = ?`).run(respRow.id);
+  }
+  
+  // Delete the request itself
+  db.prepare(`DELETE FROM cue_requests WHERE request_id = ?`).run(requestId);
 }
 
 // Group-related functions

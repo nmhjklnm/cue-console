@@ -181,7 +181,7 @@ export function ChatComposer({
   return (
     <>
       {/* Input */}
-      <div className="fixed bottom-5 z-40 px-4" style={composerStyle}>
+      <div className="shrink-0 px-4 pb-5" style={composerStyle}>
         <div
           ref={inputWrapRef}
           className={cn(

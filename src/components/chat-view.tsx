@@ -31,7 +31,7 @@ import {
 } from "@/lib/actions";
 import { ChatComposer } from "@/components/chat-composer";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TimelineList } from "@/components/chat/timeline-list";
+import { VirtualTimelineList } from "@/components/chat/virtual-timeline-list";
 import { ChatHeader } from "@/components/chat/chat-header";
 import { useMessageQueue } from "@/hooks/use-message-queue";
 import { useConversationTimeline } from "@/hooks/use-conversation-timeline";
@@ -48,6 +48,7 @@ import { useDraftPersistence } from "@/hooks/use-draft-persistence";
 import { isPauseRequest, filterPendingRequests } from "@/lib/chat-logic";
 import type { ChatType } from "@/types/chat";
 import { ArrowDown } from "lucide-react";
+import { PerfMonitor } from "@/components/perf-monitor";
 
 function perfEnabled(): boolean {
   try {
@@ -217,7 +218,6 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
         setProjectName(undefined);
       }
     })();
-
     return () => {
       cancelled = true;
     };
@@ -356,7 +356,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
       }
     };
 
-    const interval = setInterval(() => void tick(), 3000);
+    const interval = setInterval(() => void tick(), 5000);
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") void tick();
     };
@@ -402,7 +402,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     };
 
     void tick();
-    const interval = setInterval(() => void tick(), 2500);
+    const interval = setInterval(() => void tick(), 3000);
     return () => {
       cancelled = true;
       clearInterval(interval);
@@ -570,7 +570,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     setImages([]);
     imagesRef.current = [];
     setMentions([]);
-  }, [type, id, setBusy, setError, setImages, setInput, setMentions, setNotice]);
+  }, [type, id]);
 
   const loadMore = useCallback(async () => {
     if (!nextCursor) return;
@@ -704,7 +704,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     if (!notice) return;
     const t = setTimeout(() => setNotice(null), 2200);
     return () => clearTimeout(t);
-  }, [notice, setNotice]);
+  }, [notice]);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -746,6 +746,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
 
   return (
     <div className="relative flex h-full flex-1 flex-col overflow-hidden">
+      <PerfMonitor />
       {notice && (
         <div className="pointer-events-none fixed right-5 top-5 z-50">
           <div className="rounded-2xl border bg-background/95 px-3 py-2 text-sm shadow-lg backdrop-blur">
@@ -765,67 +766,56 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
         onAvatarClick={() => openAvatarPicker({ kind: type, id })}
         onTitleChange={handleTitleChange}
       />
+      
       {/* Messages */}
-      <ScrollArea
-        className={cn(
-          "flex-1 min-h-0 p-2 sm:p-4",
-          "bg-transparent"
-        )}
-        viewportRef={scrollRef}
-      >
-        <div
-          className="mx-auto flex w-full max-w-230 flex-col gap-6 overflow-x-hidden"
-          style={{ paddingBottom: composerPadPx }}
-        >
-          {bootstrapping ? (
-            <div className="flex flex-col gap-4">
-              <div className="flex justify-center py-1">
-                <Skeleton className="h-5 w-32 rounded-full" />
-              </div>
-              <div className="flex gap-2">
-                <Skeleton className="h-9 w-9 rounded-full" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-28" />
-                  <Skeleton className="h-20 w-full" />
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <div className="w-[78%] space-y-2">
-                  <Skeleton className="h-4 w-24 ml-auto" />
-                  <Skeleton className="h-16 w-full ml-auto" />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Skeleton className="h-9 w-9 rounded-full" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-20" />
-                  <Skeleton className="h-14 w-full" />
-                </div>
+      {bootstrapping ? (
+        <div className="flex-1 min-h-0 p-2 sm:p-4">
+          <div className="flex flex-col gap-4">
+            <div className="flex justify-center py-1">
+              <Skeleton className="h-5 w-32 rounded-full" />
+            </div>
+            <div className="flex gap-2">
+              <Skeleton className="h-9 w-9 rounded-full" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-20 w-full" />
               </div>
             </div>
-          ) : (
-            <>
-              <TimelineList
-                type={type}
-                timeline={timeline}
-                nextCursor={nextCursor}
-                loadingMore={loadingMore}
-                onLoadMore={loadMore}
-                agentNameMap={agentNameMap}
-                avatarUrlMap={avatarUrlMap}
-                busy={busy}
-                pendingInput={deferredInput}
-                onPasteChoice={pasteToInput}
-                onSubmitConfirm={handleSubmitConfirm}
-                onMentionAgent={(agentId: string) => insertMentionAtCursor(agentId, agentId)}
-                onReply={handleReply}
-                onCancel={handleCancel}
-                onPreview={setPreviewImage}
-              />
-            </>
-          )}
+            <div className="flex justify-end">
+              <div className="w-[78%] space-y-2">
+                <Skeleton className="h-4 w-24 ml-auto" />
+                <Skeleton className="h-16 w-full ml-auto" />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Skeleton className="h-9 w-9 rounded-full" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-14 w-full" />
+              </div>
+            </div>
+          </div>
         </div>
-      </ScrollArea>
+      ) : (
+        <VirtualTimelineList
+          type={type}
+          timeline={timeline}
+          nextCursor={nextCursor}
+          loadingMore={loadingMore}
+          onLoadMore={loadMore}
+          agentNameMap={agentNameMap}
+          avatarUrlMap={avatarUrlMap}
+          busy={busy}
+          pendingInput={deferredInput}
+          onPasteChoice={pasteToInput}
+          onSubmitConfirm={handleSubmitConfirm}
+          onMentionAgent={(agentId: string) => insertMentionAtCursor(agentId, agentId)}
+          onReply={handleReply}
+          onCancel={handleCancel}
+          onPreview={setPreviewImage}
+          scrollerRef={scrollRef}
+        />
+      )}
 
       {!bootstrapping && !isAtBottom && (
         <Button

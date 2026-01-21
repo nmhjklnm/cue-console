@@ -29,6 +29,7 @@ export function UIStateProvider({ children }: UIStateProviderProps) {
   const [notice, setNotice] = useState<string | null>(null);
 
   // Memoize to prevent unnecessary re-renders
+  // Note: setState functions are stable and don't need to be in deps
   const value = useMemo<UIStateContextValue>(
     () => ({
       busy,
