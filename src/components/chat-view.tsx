@@ -591,6 +591,16 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     nextCursorRef.current = res.cursor;
   }, [loadMorePage, loadingMore, nextCursor]);
 
+  const scrollToBottom = useCallback((instant = false) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    try {
+      el.scrollTo({ top: el.scrollHeight, behavior: instant ? "instant" : "auto" });
+    } catch {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, []);
+
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -622,6 +632,16 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     el.scrollTop = el.scrollHeight;
   }, [timeline, isAtBottom]);
 
+  // 切换对话时自动滚动到最新消息
+  useEffect(() => {
+    if (bootstrapping) return;
+    if (timeline.length === 0) return;
+    requestAnimationFrame(() => {
+      scrollToBottom(true);
+      setIsAtBottom(true);
+    });
+  }, [id, bootstrapping, scrollToBottom, setIsAtBottom]);
+
   const handleSubmitConfirm = useCallback(async (requestId: string, text: string, cancelled: boolean) => {
     if (busy) return;
     setBusy(true);
@@ -647,7 +667,11 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
 
     await refreshLatest();
     setBusy(false);
-  }, [busy, conversationMode, setBusy, setError, refreshLatest, config.chat_mode_append_text]);
+    // 发送消息后立即滚动到底部
+    requestAnimationFrame(() => {
+      scrollToBottom(true);
+    });
+  }, [busy, conversationMode, setBusy, setError, refreshLatest, scrollToBottom, config.chat_mode_append_text]);
 
   const handleCancel = useCallback(async (requestId: string) => {
     if (busy) return;
@@ -689,7 +713,11 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     setMentions([]);
     await refreshLatest();
     setBusy(false);
-  }, [input, mentions, busy, conversationMode, imagesRef, setBusy, setError, setInput, setImages, setMentions, refreshLatest, config.chat_mode_append_text]);
+    // 回复消息后立即滚动到底部
+    requestAnimationFrame(() => {
+      scrollToBottom(true);
+    });
+  }, [input, mentions, busy, conversationMode, imagesRef, setBusy, setError, setInput, setImages, setMentions, refreshLatest, scrollToBottom, config.chat_mode_append_text]);
 
 
   const hasPendingRequests = pendingRequests.length > 0;
@@ -732,16 +760,6 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     const ro = new ResizeObserver(() => update());
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
-
-  const scrollToBottom = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    try {
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    } catch {
-      el.scrollTop = el.scrollHeight;
-    }
   }, []);
 
   return (
@@ -822,7 +840,7 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
           type="button"
           variant="outline"
           size="icon"
-          onClick={scrollToBottom}
+          onClick={() => scrollToBottom(true)}
           className={cn(
             "absolute right-4 z-40",
             "h-10 w-10 rounded-full",
