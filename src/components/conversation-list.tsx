@@ -448,23 +448,17 @@ export function ConversationList({
       projectMap.get(projectName)!.push(agent);
     }
 
-    // Sort projects: those with pending messages first, then by latest activity
+    // Sort projects alphabetically (stable order)
     const projects = Array.from(projectMap.entries()).map(([name, agents]) => {
       const pendingCount = agents.reduce((sum, a) => sum + a.pendingCount, 0);
-      const lastTime = agents.reduce((latest, a) => {
-        if (!a.lastTime) return latest;
-        if (!latest) return a.lastTime;
-        return new Date(a.lastTime).getTime() > new Date(latest).getTime() ? a.lastTime : latest;
-      }, null as string | null);
-      return { name, agents, pendingCount, lastTime };
+      return { name, agents, pendingCount };
     });
 
     projects.sort((a, b) => {
-      if (a.pendingCount > 0 && b.pendingCount === 0) return -1;
-      if (a.pendingCount === 0 && b.pendingCount > 0) return 1;
-      if (!a.lastTime) return 1;
-      if (!b.lastTime) return -1;
-      return new Date(b.lastTime).getTime() - new Date(a.lastTime).getTime();
+      // Sort alphabetically, with "(No Project)" at the end
+      if (a.name === "(No Project)") return 1;
+      if (b.name === "(No Project)") return -1;
+      return a.name.localeCompare(b.name);
     });
 
     return projects;
