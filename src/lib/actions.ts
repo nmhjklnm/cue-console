@@ -119,6 +119,11 @@ export async function getUserConfig(): Promise<UserConfig> {
         typeof parsed.bot_mode_reply_text === "string" && normalizeMultiline(parsed.bot_mode_reply_text).length > 0
           ? normalizeMultiline(parsed.bot_mode_reply_text)
           : DEFAULT_USER_CONFIG.bot_mode_reply_text,
+
+      agent_grouping_mode:
+        parsed.agent_grouping_mode === "default" || parsed.agent_grouping_mode === "by_project"
+          ? parsed.agent_grouping_mode
+          : DEFAULT_USER_CONFIG.agent_grouping_mode,
     };
   } catch {
     return DEFAULT_USER_CONFIG;
@@ -152,6 +157,11 @@ export async function setUserConfig(next: Partial<UserConfig>): Promise<UserConf
       typeof next.bot_mode_reply_text === "string" && normalizeMultiline(next.bot_mode_reply_text).length > 0
         ? normalizeMultiline(next.bot_mode_reply_text)
         : prev.bot_mode_reply_text,
+
+    agent_grouping_mode:
+      next.agent_grouping_mode === "default" || next.agent_grouping_mode === "by_project"
+        ? next.agent_grouping_mode
+        : prev.agent_grouping_mode,
   };
   const p = getUserConfigPath();
   await fs.mkdir(path.dirname(p), { recursive: true });

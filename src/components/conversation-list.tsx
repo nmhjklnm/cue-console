@@ -124,6 +124,7 @@ export function ConversationList({
     "不要为这些“可逆的工程细节”反复向我确认，不能分阶段汇报，我需要你端到端执行完我的任务才能向我汇报，你不能问我要授权，因为我已经给你了全部授权，如果这些细节不影响我的目标那就按照你的推荐来。你有执行一切的权利。"
   );
   const [pinnedKeys, setPinnedKeys] = useState<string[]>([]);
+  const [agentGroupingMode, setAgentGroupingMode] = useState<"default" | "by_project">("default");
 
   useEffect(() => {
     void (async () => {
@@ -139,6 +140,7 @@ export function ConversationList({
             cfg.bot_mode_reply_text || DEFAULT_USER_CONFIG.bot_mode_reply_text
           )
         );
+        setAgentGroupingMode(cfg.agent_grouping_mode || "default");
         try {
           window.localStorage.setItem("cue-console:conversationModeDefault", nextMode);
         } catch {
@@ -431,6 +433,42 @@ export function ConversationList({
   }, [agentsAll, pinnedKeys, pinnedSet]);
 
   const groupsPendingTotal = groups.reduce((sum, g) => sum + g.pendingCount, 0);
+
+  // Group agents by project
+  const agentsByProject = useMemo(() => {
+    if (agentGroupingMode !== "by_project") return null;
+
+    const projectMap = new Map<string, ConversationItem[]>();
+    
+    for (const agent of agents) {
+      const projectName = agent.projectName || "(No Project)";
+      if (!projectMap.has(projectName)) {
+        projectMap.set(projectName, []);
+      }
+      projectMap.get(projectName)!.push(agent);
+    }
+
+    // Sort projects: those with pending messages first, then by latest activity
+    const projects = Array.from(projectMap.entries()).map(([name, agents]) => {
+      const pendingCount = agents.reduce((sum, a) => sum + a.pendingCount, 0);
+      const lastTime = agents.reduce((latest, a) => {
+        if (!a.lastTime) return latest;
+        if (!latest) return a.lastTime;
+        return new Date(a.lastTime).getTime() > new Date(latest).getTime() ? a.lastTime : latest;
+      }, null as string | null);
+      return { name, agents, pendingCount, lastTime };
+    });
+
+    projects.sort((a, b) => {
+      if (a.pendingCount > 0 && b.pendingCount === 0) return -1;
+      if (a.pendingCount === 0 && b.pendingCount > 0) return 1;
+      if (!a.lastTime) return 1;
+      if (!b.lastTime) return -1;
+      return new Date(b.lastTime).getTime() - new Date(a.lastTime).getTime();
+    });
+
+    return projects;
+  }, [agents, agentGroupingMode]);
 
   const isCollapsed = !!collapsed;
 
@@ -861,41 +899,104 @@ export function ConversationList({
           {/* Agents Section */}
           {agents.length > 0 && (
             <Collapsible open={agentsOpen} onOpenChange={setAgentsOpen} className="mb-1">
-              <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-muted-foreground hover:bg-accent/50 transition-colors">
-                <ChevronDown
-                  className={cn(
-                    "h-4 w-4 shrink-0 transition-transform duration-200",
-                    agentsOpen ? "" : "-rotate-90"
+              <div className="flex w-full items-center gap-2 rounded-md px-2 py-1.5">
+                <CollapsibleTrigger className="flex flex-1 items-center gap-2 text-sm font-medium text-muted-foreground hover:bg-accent/50 transition-colors rounded-md -mx-2 px-2 py-0">
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 shrink-0 transition-transform duration-200",
+                      agentsOpen ? "" : "-rotate-90"
+                    )}
+                  />
+                  <Bot className="h-4 w-4 shrink-0" />
+                  <span>Agents</span>
+                </CollapsibleTrigger>
+                <div
+                  className="ml-auto flex h-6 w-6 items-center justify-center rounded hover:bg-accent transition-colors cursor-pointer"
+                  onClick={async () => {
+                    const nextMode = agentGroupingMode === "default" ? "by_project" : "default";
+                    setAgentGroupingMode(nextMode);
+                    await setUserConfig({ agent_grouping_mode: nextMode });
+                  }}
+                  title={agentGroupingMode === "default" ? "Group by project" : "Show as list"}
+                >
+                  {agentGroupingMode === "default" ? (
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M3 12h18M3 17h18" />
+                    </svg>
+                  ) : (
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
                   )}
-                />
-                <Bot className="h-4 w-4 shrink-0" />
-                <span>Agents</span>
-              </CollapsibleTrigger>
+                </div>
+              </div>
               <CollapsibleContent className="mt-1 space-y-0.5">
-                {agents.map((item) => (
-                  <div
-                    key={item.id}
-                    data-conversation-item="true"
-                    onContextMenu={(e) => onItemContextMenu(e, item)}
-                  >
-                    <ConversationItemCard
-                      item={item}
-                      avatarUrl={avatarUrlMap[`agent:${item.id}`]}
-                      isSelected={selectedId === item.id && selectedType === "agent"}
-                      isPinned={pinnedSet.has(conversationKey(item))}
-                      bulkMode={bulkMode}
-                      checked={selectedKeys.has(conversationKey(item))}
-                      onToggleChecked={() => toggleSelected(conversationKey(item))}
-                      onClick={() => {
-                        if (bulkMode) {
-                          toggleSelected(conversationKey(item));
-                          return;
-                        }
-                        onSelect(item.id, "agent", item.name);
-                      }}
-                    />
-                  </div>
-                ))}
+                {agentGroupingMode === "by_project" && agentsByProject ? (
+                  agentsByProject.map((project) => (
+                    <Collapsible key={project.name} defaultOpen={true} className="mb-1">
+                      <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground/80 hover:bg-accent/30 transition-colors">
+                        <ChevronDown className="h-3 w-3 shrink-0 transition-transform duration-200 data-[state=closed]:-rotate-90" />
+                        <span className="text-[11px]">📁 {project.name}</span>
+                        {project.pendingCount > 0 && (
+                          <Badge variant="destructive" className="ml-auto h-4 min-w-4 px-1 text-[10px]">
+                            {project.pendingCount}
+                          </Badge>
+                        )}
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="mt-0.5 space-y-0.5 pl-4">
+                        {project.agents.map((item) => (
+                          <div
+                            key={item.id}
+                            data-conversation-item="true"
+                            onContextMenu={(e) => onItemContextMenu(e, item)}
+                          >
+                            <ConversationItemCard
+                              item={item}
+                              avatarUrl={avatarUrlMap[`agent:${item.id}`]}
+                              isSelected={selectedId === item.id && selectedType === "agent"}
+                              isPinned={pinnedSet.has(conversationKey(item))}
+                              bulkMode={bulkMode}
+                              checked={selectedKeys.has(conversationKey(item))}
+                              onToggleChecked={() => toggleSelected(conversationKey(item))}
+                              onClick={() => {
+                                if (bulkMode) {
+                                  toggleSelected(conversationKey(item));
+                                  return;
+                                }
+                                onSelect(item.id, "agent", item.name);
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </CollapsibleContent>
+                    </Collapsible>
+                  ))
+                ) : (
+                  agents.map((item) => (
+                    <div
+                      key={item.id}
+                      data-conversation-item="true"
+                      onContextMenu={(e) => onItemContextMenu(e, item)}
+                    >
+                      <ConversationItemCard
+                        item={item}
+                        avatarUrl={avatarUrlMap[`agent:${item.id}`]}
+                        isSelected={selectedId === item.id && selectedType === "agent"}
+                        isPinned={pinnedSet.has(conversationKey(item))}
+                        bulkMode={bulkMode}
+                        checked={selectedKeys.has(conversationKey(item))}
+                        onToggleChecked={() => toggleSelected(conversationKey(item))}
+                        onClick={() => {
+                          if (bulkMode) {
+                            toggleSelected(conversationKey(item));
+                            return;
+                          }
+                          onSelect(item.id, "agent", item.name);
+                        }}
+                      />
+                    </div>
+                  ))
+                )}
               </CollapsibleContent>
             </Collapsible>
           )}
