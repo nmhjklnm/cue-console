@@ -449,6 +449,10 @@ function ChatViewContent({ type, id, name, onBack }: ChatViewProps) {
     onSuccess: async () => {
       setMentions([]);
       await refreshLatest();
+      // 发送消息后立即滚动到底部
+      requestAnimationFrame(() => {
+        scrollToBottom(true);
+      });
     },
   });
 
