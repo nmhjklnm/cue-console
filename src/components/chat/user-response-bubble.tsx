@@ -1,9 +1,11 @@
-import { useMemo, type ReactNode, memo, type FC } from "react";
+import { useMemo, useState, type ReactNode, memo, type FC } from "react";
 import { cn, formatFullTime } from "@/lib/utils";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import type { CueResponse } from "@/lib/actions";
 import { useConfig } from "@/contexts/config-context";
 import Image from "next/image";
+import { Copy, Check } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface UserResponseBubbleProps {
   response: CueResponse;
@@ -19,9 +21,20 @@ const UserResponseBubbleComponent: FC<UserResponseBubbleProps> = ({
   onPreview,
 }) => {
   const { config } = useConfig();
+  const [copied, setCopied] = useState(false);
   const parsed = JSON.parse(response.response_json || "{}") as {
     text?: string;
     mentions?: { userId: string; start: number; length: number; display: string }[];
+  };
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(parsed.text || "");
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
   };
 
   const analysisOnlyInstruction = config.chat_mode_append_text;
@@ -187,6 +200,16 @@ const UserResponseBubbleComponent: FC<UserResponseBubbleProps> = ({
             </span>
           )}
           <span>{formatFullTime(response.created_at)}</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-auto p-1 text-xs"
+            onClick={handleCopy}
+            title={copied ? "已复制" : "复制"}
+          >
+            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            <span className="ml-1">{copied ? "已复制" : "复制"}</span>
+          </Button>
         </div>
       </div>
       {showAvatar ? (
