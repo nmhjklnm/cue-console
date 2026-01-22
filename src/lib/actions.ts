@@ -56,12 +56,12 @@ import {
   listBotEnabledConversations,
   type ConversationType,
   type CueResponse,
-} from "./db";
+} from "./db/index";
 
 // Import/export from the shared types file
 import type { ConversationItem, UserResponse } from "./types";
 export type { Group, UserResponse, ImageContent, ConversationItem } from "./types";
-export type { CueRequest, CueResponse, AgentTimelineItem } from "./db";
+export type { CueRequest, CueResponse, AgentTimelineItem } from "./db/index";
 import { v4 as uuidv4 } from "uuid";
 
 import {
