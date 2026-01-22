@@ -81,6 +81,10 @@ export type QueuedMessage = {
   createdAt: number;
 };
 
+// ============================================================================
+// User Configuration
+// ============================================================================
+
 function getUserConfigPath(): string {
   return path.join(os.homedir(), ".cue", "config.json");
 }
@@ -99,27 +103,22 @@ export async function getUserConfig(): Promise<UserConfig> {
         parsed.conversation_mode_default === "chat" || parsed.conversation_mode_default === "agent"
           ? parsed.conversation_mode_default
           : DEFAULT_USER_CONFIG.conversation_mode_default,
-
       chat_mode_append_text:
         typeof parsed.chat_mode_append_text === "string" && normalizeSingleLine(parsed.chat_mode_append_text).length > 0
           ? normalizeSingleLine(parsed.chat_mode_append_text)
           : DEFAULT_USER_CONFIG.chat_mode_append_text,
-
       pending_request_timeout_ms:
         typeof parsed.pending_request_timeout_ms === "number"
           ? clampNumber(parsed.pending_request_timeout_ms, 60_000, 86_400_000)
           : DEFAULT_USER_CONFIG.pending_request_timeout_ms,
-
       bot_mode_enabled:
         typeof parsed.bot_mode_enabled === "boolean"
           ? parsed.bot_mode_enabled
           : DEFAULT_USER_CONFIG.bot_mode_enabled,
-
       bot_mode_reply_text:
         typeof parsed.bot_mode_reply_text === "string" && normalizeMultiline(parsed.bot_mode_reply_text).length > 0
           ? normalizeMultiline(parsed.bot_mode_reply_text)
           : DEFAULT_USER_CONFIG.bot_mode_reply_text,
-
       agent_grouping_mode:
         parsed.agent_grouping_mode === "default" || parsed.agent_grouping_mode === "by_project"
           ? parsed.agent_grouping_mode
@@ -139,25 +138,20 @@ export async function setUserConfig(next: Partial<UserConfig>): Promise<UserConf
       next.conversation_mode_default === "chat" || next.conversation_mode_default === "agent"
         ? next.conversation_mode_default
         : prev.conversation_mode_default,
-
     chat_mode_append_text:
       typeof next.chat_mode_append_text === "string" && normalizeSingleLine(next.chat_mode_append_text).length > 0
         ? normalizeSingleLine(next.chat_mode_append_text)
         : prev.chat_mode_append_text,
-
     pending_request_timeout_ms:
       typeof next.pending_request_timeout_ms === "number"
         ? clampNumber(next.pending_request_timeout_ms, 60_000, 86_400_000)
         : prev.pending_request_timeout_ms,
-
     bot_mode_enabled:
       typeof next.bot_mode_enabled === "boolean" ? next.bot_mode_enabled : prev.bot_mode_enabled,
-
     bot_mode_reply_text:
       typeof next.bot_mode_reply_text === "string" && normalizeMultiline(next.bot_mode_reply_text).length > 0
         ? normalizeMultiline(next.bot_mode_reply_text)
         : prev.bot_mode_reply_text,
-
     agent_grouping_mode:
       next.agent_grouping_mode === "default" || next.agent_grouping_mode === "by_project"
         ? next.agent_grouping_mode
@@ -169,6 +163,10 @@ export async function setUserConfig(next: Partial<UserConfig>): Promise<UserConf
   return merged;
 }
 
+// ============================================================================
+// Bot Processing
+// ============================================================================
+
 export async function processBotTick(args: {
   holderId: string;
   convType: ConversationType;
@@ -178,26 +176,21 @@ export async function processBotTick(args: {
   try {
     const holderId = String(args.holderId || "").trim();
     if (!holderId) return { success: false, error: "holderId required" } as const;
-
     const convType = args.convType === "group" ? "group" : "agent";
     const convId = String(args.convId || "").trim();
     if (!convId) return { success: false, error: "convId required" } as const;
-
     const cfg = await getUserConfig();
-
     const lease = acquireWorkerLease({
       leaseKey: `cue-console:bot-mode:${convType}:${convId}`,
       holderId,
       ttlMs: 5_000,
     });
     if (!lease.acquired) return { success: true, acquired: false, replied: 0 } as const;
-
     const limit = Math.max(1, Math.min(200, args.limit ?? 50));
     const pending =
       convType === "agent"
         ? getAgentPendingRequests(convId, limit)
         : getGroupPendingRequests(convId).slice(0, limit);
-
     let replied = 0;
     const text = cfg.bot_mode_reply_text;
     for (const r of pending) {
@@ -205,15 +198,30 @@ export async function processBotTick(args: {
         sendResponse(String(r.request_id), { text }, false);
         replied += 1;
       } catch {
-        // ignore per-request failures
       }
     }
-
     return { success: true, acquired: true, replied } as const;
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : String(e) } as const;
   }
 }
+
+export async function fetchBotEnabled(type: ConversationType, id: string) {
+  return { enabled: getBotEnabledConversation(type, id) } as const;
+}
+
+export async function updateBotEnabled(type: ConversationType, id: string, enabled: boolean) {
+  setBotEnabledConversation(type, id, enabled);
+  return { success: true, enabled } as const;
+}
+
+export async function fetchBotEnabledConversations(limit?: number) {
+  return listBotEnabledConversations(limit);
+}
+
+// ============================================================================
+// Agent Display Names
+// ============================================================================
 
 export async function fetchAgentDisplayNames(agentIds: string[]) {
   return getAgentDisplayNames(agentIds);
@@ -228,38 +236,9 @@ export async function fetchArchivedConversationCount() {
   return getArchivedConversationCount();
 }
 
-export async function bootstrapConversation(args: {
-  type: ConversationType;
-  id: string;
-  limit?: number;
-}): Promise<{
-  config: UserConfig;
-  members: string[];
-  agentNameMap: Record<string, string>;
-  queue: QueuedMessage[];
-  timeline: Awaited<ReturnType<typeof fetchAgentTimeline>>;
-}> {
-  const type = args.type;
-  const id = args.id;
-  const limit = Math.max(1, Math.min(80, args.limit ?? 30));
-
-  const cfgP = getUserConfig();
-  const memsP = type === "group" ? Promise.resolve(getGroupMembers(id)) : Promise.resolve<string[]>([]);
-  const queueP = Promise.resolve(fetchMessageQueue(type, id));
-  const pageP = type === "agent" ? fetchAgentTimeline(id, null, limit) : fetchGroupTimeline(id, null, limit);
-
-  const [config, members, queue, timeline] = await Promise.all([cfgP, memsP, queueP, pageP]);
-  const ids = type === "group" ? Array.from(new Set([id, ...members])) : [id];
-  const agentNameMap = getAgentDisplayNames(ids);
-
-  return {
-    config,
-    members,
-    agentNameMap,
-    queue,
-    timeline,
-  };
-}
+// ============================================================================
+// Conversation Management
+// ============================================================================
 
 function parseConversationKey(key: string): { type: "agent" | "group"; id: string } | null {
   const idx = key.indexOf(":");
@@ -320,6 +299,39 @@ export async function deleteConversations(keys: string[]) {
     }
   }
   return { success: true } as const;
+}
+
+export async function bootstrapConversation(args: {
+  type: ConversationType;
+  id: string;
+  limit?: number;
+}): Promise<{
+  config: Awaited<ReturnType<typeof getUserConfig>>;
+  members: string[];
+  agentNameMap: Record<string, string>;
+  queue: QueuedMessage[];
+  timeline: Awaited<ReturnType<typeof fetchAgentTimeline>>;
+}> {
+  const type = args.type;
+  const id = args.id;
+  const limit = Math.max(1, Math.min(80, args.limit ?? 30));
+
+  const cfgP = getUserConfig();
+  const memsP = type === "group" ? Promise.resolve(getGroupMembers(id)) : Promise.resolve<string[]>([]);
+  const queueP = Promise.resolve(fetchMessageQueue(type, id));
+  const pageP = type === "agent" ? fetchAgentTimeline(id, null, limit) : fetchGroupTimeline(id, null, limit);
+
+  const [config, members, queue, timeline] = await Promise.all([cfgP, memsP, queueP, pageP]);
+  const ids = type === "group" ? Array.from(new Set([id, ...members])) : [id];
+  const agentNameMap = getAgentDisplayNames(ids);
+
+  return {
+    config,
+    members,
+    agentNameMap,
+    queue,
+    timeline,
+  };
 }
 
 // Agent
@@ -426,18 +438,6 @@ export async function claimWorkerLease(args: {
   return acquireWorkerLease(args);
 }
 
-export async function fetchBotEnabled(type: ConversationType, id: string) {
-  return { enabled: getBotEnabledConversation(type, id) } as const;
-}
-
-export async function updateBotEnabled(type: ConversationType, id: string, enabled: boolean) {
-  setBotEnabledConversation(type, id, enabled);
-  return { success: true, enabled } as const;
-}
-
-export async function fetchBotEnabledConversations(limit?: number) {
-  return listBotEnabledConversations(limit);
-}
 
 // Responses
 export async function submitResponse(

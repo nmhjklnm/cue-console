@@ -18,10 +18,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { cn, getAgentEmoji } from "@/lib/utils";
-import { setAgentDisplayName } from "@/lib/actions";
-import { Bot, CornerUpLeft, GripVertical, Plus, Send, Trash2, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Plus, Send, X } from "lucide-react";
 import Image from "next/image";
+import { MentionPopover } from "@/components/chat-composer/mention-popover";
+import { QueuePanel } from "@/components/chat-composer/queue-panel";
+import { BotToggleButton } from "@/components/chat-composer/bot-toggle-button";
 
 type MentionDraft = {
   userId: string;
@@ -164,7 +166,6 @@ export function ChatComposer({
       : ({ left: "var(--cuehub-sidebar-w, 0px)", right: 0 } as const);
   }, [onBack]);
 
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [botToggling, setBotToggling] = useState(false);
   const [botConfirmOpen, setBotConfirmOpen] = useState(false);
   const isComposingRef = useRef(false);
@@ -189,82 +190,12 @@ export function ChatComposer({
             "glass-surface glass-noise"
           )}
         >
-          {/* Queue Panel */}
-          {queue.length > 0 && (
-            <div className="px-1 pt-1">
-              <div className="flex items-center justify-between">
-                <p className="text-[11px] text-muted-foreground">
-                  {queue.length} messages queued
-                </p>
-              </div>
-              <div className="mt-1 max-h-28 overflow-y-auto pr-1">
-                <div className="space-y-1">
-                  {queue.map((q, idx) => {
-                    const summary = (q.text || "").split(/\r?\n/)[0] || "(empty)";
-                    const hasImages = (q.images?.length || 0) > 0;
-                    return (
-                      <div
-                        key={q.id}
-                        className={cn(
-                          "flex items-center gap-2 rounded-2xl px-2 py-1",
-                          "bg-white/35 ring-1 ring-white/25"
-                        )}
-                        draggable
-                        onDragStart={(e) => {
-                          setDragIndex(idx);
-                          e.dataTransfer.setData("text/plain", String(idx));
-                          e.dataTransfer.effectAllowed = "move";
-                        }}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          e.dataTransfer.dropEffect = "move";
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          const raw = e.dataTransfer.getData("text/plain");
-                          const from = Number(raw);
-                          if (Number.isFinite(from)) reorderQueue(from, idx);
-                          setDragIndex(null);
-                        }}
-                        onDragEnd={() => setDragIndex(null)}
-                        data-dragging={dragIndex === idx ? "true" : "false"}
-                      >
-                        <span className="text-muted-foreground">
-                          <GripVertical className="h-3.5 w-3.5" />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs">
-                            {summary}
-                            {hasImages ? "  [img]" : ""}
-                          </p>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 rounded-xl hover:bg-white/40"
-                          onClick={() => recallQueued(q.id)}
-                          title="Recall to input"
-                        >
-                          <CornerUpLeft className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 rounded-xl hover:bg-white/40"
-                          onClick={() => removeQueued(q.id)}
-                          title="Remove from queue"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
+          <QueuePanel
+            queue={queue}
+            removeQueued={removeQueued}
+            recallQueued={recallQueued}
+            reorderQueue={reorderQueue}
+          />
 
           <Dialog open={botConfirmOpen} onOpenChange={setBotConfirmOpen}>
             <DialogContent className="sm:max-w-110">
@@ -351,107 +282,22 @@ export function ChatComposer({
             </div>
           )}
 
-          {mentionOpen && type === "group" && (
-            <div
-              ref={mentionPopoverRef}
-              className={cn(
-                "absolute mb-2",
-                "w-auto max-w-130",
-                "rounded-2xl glass-surface glass-noise"
-              )}
-              style={
-                mentionPos
-                  ? {
-                      left: mentionPos.left,
-                      top: mentionPos.top,
-                      transform: "translateY(-100%)",
-                    }
-                  : undefined
-              }
-              onPointerDownCapture={() => {
-                pointerInMentionRef.current = true;
-              }}
-              onPointerUpCapture={() => {
-                pointerInMentionRef.current = false;
-              }}
-              onPointerCancelCapture={() => {
-                pointerInMentionRef.current = false;
-              }}
-              onMouseEnter={() => {
-                pointerInMentionRef.current = true;
-              }}
-              onMouseLeave={() => {
-                pointerInMentionRef.current = false;
-              }}
-              onWheel={(e) => {
-                e.stopPropagation();
-              }}
-            >
-              <div className="flex items-center justify-between px-3 pt-2">
-                <p className="text-[11px] text-muted-foreground">Mention members</p>
-                <p className="text-[11px] text-muted-foreground">↑↓ / Enter</p>
-              </div>
-              <div
-                ref={mentionListRef}
-                className={cn(
-                  "px-1 pb-2 pt-1",
-                  mentionScrollable ? "max-h-28 overflow-y-auto" : "overflow-hidden"
-                )}
-                onWheel={(e) => {
-                  e.stopPropagation();
-                }}
-                onScroll={(e) => {
-                  mentionScrollTopRef.current = (e.currentTarget as HTMLDivElement).scrollTop;
-                }}
-              >
-                {mentionCandidates.length === 0 ? (
-                  <div className="px-3 py-2 text-sm text-muted-foreground">No matches</div>
-                ) : (
-                  mentionCandidates.map((m, idx) => {
-                    const isAll = m === "all";
-                    const label = isAll ? "All" : agentNameMap[m] || m;
-                    const active = idx === mentionActive;
-                    return (
-                      <button
-                        key={m}
-                        type="button"
-                        data-mention-active={active ? "true" : "false"}
-                        className={cn(
-                          "w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm",
-                          active ? "bg-accent" : "hover:bg-accent/50"
-                        )}
-                        onMouseEnter={() => setMentionActive(idx)}
-                        onClick={() => {
-                          insertMention(label, isAll ? "all" : m);
-                        }}
-                      >
-                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[12px]">
-                          {isAll ? "@" : getAgentEmoji(m)}
-                        </span>
-                        <span
-                          className="flex-1 truncate"
-                          onDoubleClick={(e) => {
-                            if (isAll) return;
-                            e.preventDefault();
-                            e.stopPropagation();
-                            const current = agentNameMap[m] || m;
-                            const next = window.prompt(`Rename: ${m}`, current);
-                            if (!next) return;
-                            void (async () => {
-                              await setAgentDisplayName(m, next);
-                              setAgentNameMap((prev) => ({ ...prev, [m]: next.trim() }));
-                            })();
-                          }}
-                          title={isAll ? undefined : "Double-click to rename"}
-                        >
-                          @{label}
-                        </span>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </div>
+{type === "group" && (
+            <MentionPopover
+              mentionOpen={mentionOpen}
+              mentionPos={mentionPos}
+              mentionCandidates={mentionCandidates}
+              mentionActive={mentionActive}
+              setMentionActive={setMentionActive}
+              mentionScrollable={mentionScrollable}
+              mentionPopoverRef={mentionPopoverRef}
+              mentionListRef={mentionListRef}
+              pointerInMentionRef={pointerInMentionRef}
+              mentionScrollTopRef={mentionScrollTopRef}
+              insertMention={insertMention}
+              agentNameMap={agentNameMap}
+              setAgentNameMap={setAgentNameMap}
+            />
           )}
 
           {/* Row 1: textarea */}
@@ -681,19 +527,12 @@ export function ChatComposer({
                 Queue
               </Button>
 
-              <button
-                type="button"
-                disabled={busy || botToggling || !botLoaded}
-                className={cn(
-                  "relative h-8 px-3 rounded-xl transition-all duration-200",
-                  "flex items-center gap-1.5",
-                  "disabled:cursor-not-allowed disabled:opacity-50",
-                  botEnabled
-                    ? "bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/25"
-                    : botLoadError
-                      ? "bg-red-500/10 hover:bg-red-500/20 text-red-500 ring-1 ring-red-500/30"
-                      : "bg-white/10 hover:bg-white/20 text-muted-foreground"
-                )}
+              <BotToggleButton
+                botEnabled={botEnabled}
+                botLoaded={botLoaded}
+                botLoadError={botLoadError}
+                botToggling={botToggling}
+                busy={busy}
                 onClick={async () => {
                   if (busy || botToggling) return;
                   if (!botLoaded) return;
@@ -708,59 +547,7 @@ export function ChatComposer({
                     setBotToggling(false);
                   }
                 }}
-                aria-label={botEnabled ? "Stop bot" : "Start bot"}
-                title={
-                  !botLoaded
-                    ? "Bot status loading…"
-                    : botToggling
-                      ? "Turning…"
-                      : botLoadError
-                        ? "Bot state sync error"
-                        : botEnabled
-                          ? "Bot is active - click to stop"
-                          : "Start bot mode"
-                }
-              >
-                {/* Custom SVG icon */}
-                <svg
-                  className={cn(
-                    "w-4 h-4 transition-transform duration-200",
-                    botEnabled && "scale-110"
-                  )}
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  {/* Robot head */}
-                  <rect x="6" y="8" width="12" height="10" rx="2" />
-                  {/* Antenna */}
-                  <path d="M12 8V5" />
-                  <circle cx="12" cy="4" r="1" fill="currentColor" />
-                  {/* Eyes */}
-                  <circle cx="9.5" cy="12" r="1" fill="currentColor" />
-                  <circle cx="14.5" cy="12" r="1" fill="currentColor" />
-                  {/* Mouth */}
-                  <path d="M9 15h6" />
-                  {/* Arms */}
-                  <path d="M6 13H4" />
-                  <path d="M20 13h-2" />
-                </svg>
-                
-                <span className="text-xs font-medium">
-                  {botToggling ? "..." : botEnabled ? "ON" : "Bot"}
-                </span>
-                
-                {/* Status indicator dot */}
-                {!botLoaded && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-                )}
-                {botLoadError && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                )}
-              </button>
+              />
             </div>
 
             <Button
