@@ -617,46 +617,84 @@ export function ConversationList({
       >
         {isCollapsed ? (
           <div className="flex w-full flex-col items-center justify-center gap-2">
+            {/* Cue Icon in collapsed state */}
+            <div className="flex items-center justify-center mb-1">
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 32 32"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                className="text-foreground"
+                aria-label="Cue"
+              >
+                <path
+                  d="M16 4C9.37258 4 4 9.37258 4 16C4 22.6274 9.37258 28 16 28C19.3137 28 22.3137 26.6274 24.4183 24.4183"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                />
+                <circle cx="24" cy="8" r="2.5" fill="currentColor" />
+              </svg>
+            </div>
+            
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9"
+              className="h-9 w-9 transition-colors duration-200"
               onClick={onToggleCollapsed}
               disabled={!onToggleCollapsed}
-              title="Expand sidebar"
+              aria-label="Expand sidebar"
             >
               <ChevronRight className="h-5 w-5" />
             </Button>
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9"
+              className="h-9 w-9 transition-colors duration-200"
               onClick={onCreateGroup}
-              title="Create group"
+              aria-label="Create group"
             >
               <Plus className="h-5 w-5" />
             </Button>
           </div>
         ) : (
           <div className="flex w-full items-center justify-between gap-2">
-            <a
-              href="https://github.com/nmhjklnm/cue-console"
-              target="_blank"
-              rel="noreferrer"
-              className="text-lg font-semibold hover:underline underline-offset-4"
-              title="Open cue-console repository"
-            >
-              cue-console
-            </a>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              {/* Cue Icon */}
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 32 32"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                className="shrink-0 text-foreground"
+                aria-hidden="true"
+              >
+                <path
+                  d="M16 4C9.37258 4 4 9.37258 4 16C4 22.6274 9.37258 28 16 28C19.3137 28 22.3137 26.6274 24.4183 24.4183"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                />
+                <circle cx="24" cy="8" r="2.5" fill="currentColor" />
+              </svg>
+              
+              {/* Brand Name */}
+              <span className="text-lg font-semibold text-foreground truncate">
+                Cue
+              </span>
+            </div>
+            
+            <div className="flex items-center gap-1 shrink-0">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className="h-8 w-8 transition-colors duration-200"
                 onClick={(e) => {
                   setMoreMenu({ open: true, x: e.clientX, y: e.clientY });
                 }}
-                title="More"
+                aria-label="More options"
               >
                 <MoreHorizontal className="h-5 w-5" />
               </Button>
@@ -664,9 +702,10 @@ export function ConversationList({
               <Button
                 variant="ghost"
                 size="icon"
+                className="h-8 w-8 transition-colors duration-200"
                 onClick={onToggleCollapsed}
                 disabled={!onToggleCollapsed}
-                title="Collapse sidebar"
+                aria-label="Collapse sidebar"
               >
                 <ChevronLeft className="h-5 w-5" />
               </Button>

@@ -4,8 +4,11 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "cue-console",
-  description: "AI agent group chat console",
+  title: "Cue",
+  description: "AI agent collaboration console",
+  icons: {
+    icon: "/cue-icon.svg",
+  },
 };
 
 export default function RootLayout({
