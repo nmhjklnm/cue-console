@@ -641,21 +641,21 @@ export function ConversationList({
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9 transition-colors duration-200"
+              className="h-9 w-9 transition-colors duration-200 hover:bg-accent"
               onClick={onToggleCollapsed}
               disabled={!onToggleCollapsed}
               aria-label="Expand sidebar"
             >
-              <ChevronRight className="h-5 w-5" />
+              <ChevronRight className="h-4 w-4" />
             </Button>
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9 transition-colors duration-200"
+              className="h-9 w-9 transition-colors duration-200 hover:bg-accent"
               onClick={onCreateGroup}
               aria-label="Create group"
             >
-              <Plus className="h-5 w-5" />
+              <Plus className="h-4 w-4" />
             </Button>
           </div>
         ) : (
@@ -686,28 +686,28 @@ export function ConversationList({
               </span>
             </div>
             
-            <div className="flex items-center gap-1 shrink-0">
+            <div className="flex items-center gap-0.5 shrink-0">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 transition-colors duration-200"
+                className="h-8 w-8 transition-colors duration-200 hover:bg-accent"
                 onClick={(e) => {
                   setMoreMenu({ open: true, x: e.clientX, y: e.clientY });
                 }}
-                aria-label="More options"
+                aria-label="Settings"
               >
-                <MoreHorizontal className="h-5 w-5" />
+                <Settings className="h-4 w-4" />
               </Button>
 
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 transition-colors duration-200"
+                className="h-8 w-8 transition-colors duration-200 hover:bg-accent"
                 onClick={onToggleCollapsed}
                 disabled={!onToggleCollapsed}
                 aria-label="Collapse sidebar"
               >
-                <ChevronLeft className="h-5 w-5" />
+                <ChevronLeft className="h-4 w-4" />
               </Button>
             </div>
           </div>
