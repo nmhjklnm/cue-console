@@ -42,6 +42,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Menu,
   MessageCircle,
   MoreHorizontal,
   Pin,
@@ -694,9 +695,9 @@ export function ConversationList({
                 onClick={(e) => {
                   setMoreMenu({ open: true, x: e.clientX, y: e.clientY });
                 }}
-                aria-label="Settings"
+                aria-label="Actions menu"
               >
-                <Settings className="h-4 w-4" />
+                <Menu className="h-4 w-4" />
               </Button>
 
               <Button
