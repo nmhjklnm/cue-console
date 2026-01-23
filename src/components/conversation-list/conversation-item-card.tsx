@@ -30,7 +30,7 @@ export function ConversationItemCard({
   return (
     <button
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-2xl px-2.5 py-1.5 text-left transition overflow-hidden",
+        "flex w-full items-center gap-2.5 rounded-2xl px-2.5 py-1.5 text-left transition-colors duration-200 overflow-hidden cursor-pointer",
         "backdrop-blur-sm",
         isSelected
           ? "bg-primary/10 text-accent-foreground shadow-sm"
@@ -39,6 +39,8 @@ export function ConversationItemCard({
             : "hover:bg-white/40"
       )}
       onClick={onClick}
+      aria-label={`${item.type === "group" ? "Group" : "Agent"} conversation: ${item.displayName}${item.pendingCount > 0 ? `, ${item.pendingCount} pending messages` : ""}`}
+      aria-pressed={isSelected}
     >
       {bulkMode && (
         <span className="flex h-9 w-5 items-center justify-center">
@@ -47,6 +49,7 @@ export function ConversationItemCard({
             checked={!!checked}
             onChange={() => onToggleChecked?.()}
             onClick={(e) => e.stopPropagation()}
+            aria-label={`Select ${item.displayName}`}
           />
         </span>
       )}

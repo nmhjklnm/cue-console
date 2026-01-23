@@ -19,14 +19,15 @@ export function ConversationIconButton({
   return (
     <button
       className={cn(
-        "relative flex h-11 w-11 items-center justify-center rounded-2xl transition",
+        "relative flex h-11 w-11 items-center justify-center rounded-2xl transition-colors duration-200 cursor-pointer",
         "backdrop-blur-sm",
         isSelected
           ? "bg-primary/10 text-accent-foreground shadow-sm"
           : "hover:bg-white/40"
       )}
       onClick={onClick}
-      title={item.displayName}
+      aria-label={`${item.type === "group" ? "Group" : "Agent"}: ${item.displayName}${item.pendingCount > 0 ? `, ${item.pendingCount} pending` : ""}`}
+      aria-pressed={isSelected}
     >
       {avatarUrl ? (
         <Image

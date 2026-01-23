@@ -49,42 +49,42 @@
 :root {
   --radius: 0.625rem;
   --background: #F7F8FB;
-  --foreground: #0B1220;
+  --foreground: #0F172A;
   --card: #FFFFFF;
-  --card-foreground: #0B1220;
+  --card-foreground: #0F172A;
   --popover: #FFFFFF;
-  --popover-foreground: #0B1220;
+  --popover-foreground: #0F172A;
   --primary: #0B1220;
   --primary-foreground: #FFFFFF;
   --secondary: #FFFFFF;
-  --secondary-foreground: #0B1220;
+  --secondary-foreground: #0F172A;
   --muted: rgb(15 23 42 / 0.04);
-  --muted-foreground: rgb(11 18 32 / 0.62);
+  --muted-foreground: #475569;
   --accent: rgb(11 18 32 / 0.06);
-  --accent-foreground: #0B1220;
+  --accent-foreground: #0F172A;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: rgb(11 18 32 / 0.10);
-  --input: rgb(11 18 32 / 0.10);
-  --ring: rgb(37 99 235 / 0.28);
+  --border: rgb(11 18 32 / 0.12);
+  --input: rgb(11 18 32 / 0.12);
+  --ring: rgb(37 99 235 / 0.32);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
   --sidebar: #FFFFFF;
-  --sidebar-foreground: #0B1220;
+  --sidebar-foreground: #0F172A;
   --sidebar-primary: #0B1220;
   --sidebar-primary-foreground: #FFFFFF;
   --sidebar-accent: rgb(11 18 32 / 0.06);
-  --sidebar-accent-foreground: #0B1220;
-  --sidebar-border: rgb(11 18 32 / 0.10);
-  --sidebar-ring: rgb(37 99 235 / 0.24);
+  --sidebar-accent-foreground: #0F172A;
+  --sidebar-border: rgb(11 18 32 / 0.12);
+  --sidebar-ring: rgb(37 99 235 / 0.32);
 
-  --glass-bg: rgb(255 255 255 / 0.72);
-  --glass-bg-soft: rgb(255 255 255 / 0.80);
-  --glass-bg-opaque: rgb(255 255 255 / 0.88);
-  --glass-border: rgb(255 255 255 / 0.55);
-  --glass-border-soft: rgb(255 255 255 / 0.45);
+  --glass-bg: rgb(255 255 255 / 0.80);
+  --glass-bg-soft: rgb(255 255 255 / 0.85);
+  --glass-bg-opaque: rgb(255 255 255 / 0.92);
+  --glass-border: rgb(11 18 32 / 0.12);
+  --glass-border-soft: rgb(11 18 32 / 0.08);
   --glass-shadow: 0 18px 44px rgb(11 18 32 / 0.10);
   --glass-shadow-soft: 0 14px 36px rgb(11 18 32 / 0.09);
   --glass-inset: inset 0 1px 0 rgb(255 255 255 / 0.78), inset 0 0 0 1px rgb(255 255 255 / 0.22);
@@ -160,6 +160,17 @@
   ::selection {
     background: rgb(56 189 248 / 0.28);
     color: var(--foreground);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
