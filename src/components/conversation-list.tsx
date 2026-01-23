@@ -662,11 +662,11 @@ export function ConversationList({
         ) : (
           <div className="flex w-full items-center justify-between gap-2">
             <a
-              href="https://github.com/nmhjklnm/cue-console"
+              href="https://github.com/nmhjklnm/CueStack"
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-2 min-w-0 flex-1 transition-opacity duration-200 hover:opacity-70 cursor-pointer"
-              title="Visit Cue on GitHub"
+              title="Visit CueStack on GitHub"
             >
               {/* Cue Icon */}
               <svg
