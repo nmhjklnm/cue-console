@@ -40,10 +40,10 @@ interface AvatarPickerDialogProps {
   onOpenChange: (open: boolean) => void;
   avatarPickerTarget: { kind: "agent" | "group"; id: string } | null;
   avatarUrlMap: Record<string, string>;
-  avatarCandidates: Array<{ seed: number; url: string }>;
+  avatarCandidates: Array<{ seed: string; url: string }>;
   titleDisplay: string;
   onRandomize: () => Promise<void>;
-  onSelectAvatar: (seed: number) => Promise<void>;
+  onSelectAvatar: (seed: string) => Promise<void>;
 }
 
 export function AvatarPickerDialog({

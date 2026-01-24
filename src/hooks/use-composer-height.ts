@@ -1,7 +1,7 @@
 import { useState, useEffect, RefObject } from "react";
 
 interface UseComposerHeightProps {
-  inputWrapRef: RefObject<HTMLDivElement>;
+  inputWrapRef: RefObject<HTMLDivElement | null>;
 }
 
 export function useComposerHeight({ inputWrapRef }: UseComposerHeightProps) {
